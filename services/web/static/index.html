@@ -8,17 +8,19 @@
 </head>
 <body>
   <header class="bar">
-    <strong>손동작 원격 그림판</strong>
-    <span id="ws-state" class="pill off">서버 연결 중</span>
-    <span id="phone-state" class="pill off">휴대폰 대기</span>
-    <span class="tool">펜 <i id="pen-color" class="swatch"></i> <b id="pen-size"></b>px</span>
-    <span class="debug">
-      동작 <b id="dbg-gesture">-</b> (<b id="dbg-conf">-</b>)
-      · 기능 <b id="dbg-action">-</b>
-      · 지연 <b id="dbg-latency">-</b>ms
-      · 손 크기 <b id="dbg-hand">-</b>
-    </span>
-    <button id="btn-pair" type="button">QR 다시 보기</button>
+    <strong class="brand">✋ 손동작 원격 그림판</strong>
+    <div class="status">
+      <span id="ws-state" class="pill off">서버 연결 중</span>
+      <span id="phone-state" class="pill off">휴대폰 대기</span>
+    </div>
+    <span class="pen" title="지금 펜">펜 <i id="pen-color" class="swatch"></i> <span><b id="pen-size"></b>px</span></span>
+    <dl class="debug" aria-label="인식 상태">
+      <div><dt>동작</dt><dd><b id="dbg-gesture">-</b> <span class="sub">(<span id="dbg-conf">-</span>)</span></dd></div>
+      <div><dt>기능</dt><dd id="dbg-action">-</dd></div>
+      <div><dt>지연</dt><dd><span id="dbg-latency">-</span>ms</dd></div>
+      <div><dt>손 크기</dt><dd id="dbg-hand">-</dd></div>
+    </dl>
+    <button id="btn-pair" class="btn ghost" type="button">QR 다시 보기</button>
   </header>
 
   <main id="stage">
@@ -42,8 +44,11 @@
           <i id="tool-color-dot" class="tool-dot"></i>
         </button>
         <hr>
-        <button type="button" id="tool-undo" aria-label="실행 취소" title="실행 취소">
+        <button type="button" id="tool-undo" aria-label="실행 취소" title="실행 취소 (Ctrl+Z)">
           <svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11"/></svg>
+        </button>
+        <button type="button" id="tool-redo" aria-label="다시 실행" title="다시 실행 (Ctrl+Y)">
+          <svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 000 11H13"/></svg>
         </button>
         <button type="button" id="tool-clear" aria-label="전체 지우기" title="전체 지우기">
           <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg>
@@ -61,14 +66,20 @@
   </main>
 
   <section id="pair" class="pair">
-    <div class="pair-card">
-      <h1>휴대폰으로 QR을 스캔하세요</h1>
-      <img id="pair-qr" alt="페어링 QR" hidden>
+    <div class="pair-card" role="dialog" aria-labelledby="pair-title">
+      <h1 id="pair-title">휴대폰 연결하기</h1>
+      <ol class="steps">
+        <li>휴대폰을 이 PC와 <b>같은 Wi-Fi</b>에 연결</li>
+        <li>휴대폰 카메라로 <b>QR 스캔</b></li>
+        <li>"안전하지 않음" 화면이 나오면 <b>계속</b></li>
+        <li>휴대폰에서 <b>촬영 시작</b></li>
+      </ol>
+      <div class="qr-box"><img id="pair-qr" alt="페어링 QR" hidden></div>
       <p id="pair-msg"></p>
       <p class="sid">세션 <code id="pair-sid">-</code></p>
       <div class="pair-buttons">
-        <button id="btn-renew" type="button">새 QR 받기</button>
-        <button id="btn-close" type="button">닫기</button>
+        <button id="btn-renew" class="btn primary" type="button">새 QR 받기</button>
+        <button id="btn-close" class="btn" type="button">닫기</button>
       </div>
     </div>
   </section>

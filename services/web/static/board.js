@@ -17,6 +17,9 @@ const pen = { color: 0, size: 1 };
 let strokes = [];       // { color, size, erase, points: [[x, y], ...] } 손·마우스 획을 함께 둔다
 let current = null;     // 손 펜이 내려가 있으면 그리는 중인 획
 let mouseStroke = null; // 마우스로 그리는 중인 획
+// 실행 취소·다시 실행 기록. 작업은 { stroke } (획 하나 추가) 또는 { cleared: [...] } (전체 지우기 전 획들)
+let done = [];
+let undone = [];        // 새 획을 그리면 비운다
 
 function toPx(x, y) {
   return [x * canvas.clientWidth, y * canvas.clientHeight];
@@ -58,8 +61,49 @@ function newStroke(x, y, erase) {
   const style = erase ? ERASER : { color: COLORS[pen.color], size: SIZES[pen.size] };
   const s = { ...style, erase, points: [[x, y]] };
   strokes.push(s);
+  record({ stroke: s });
   drawStroke(s);
   return s;
+}
+
+function record(op) {
+  done.push(op);
+  undone = [];
+  updateHistory();
+}
+
+function undo() {
+  penUp();
+  const op = done.pop();
+  if (!op) return;
+  if (op.stroke) strokes.splice(strokes.lastIndexOf(op.stroke), 1);
+  else strokes = op.cleared;
+  undone.push(op);
+  redraw();
+  updateHistory();
+}
+
+function redo() {
+  penUp();
+  const op = undone.pop();
+  if (!op) return;
+  if (op.stroke) strokes.push(op.stroke);
+  else { op.cleared = strokes; strokes = []; }
+  done.push(op);
+  redraw();
+  updateHistory();
+}
+
+function clearAll() {
+  penUp();
+  if (strokes.length) record({ cleared: strokes });  // 전체 지우기도 실행 취소로 되살릴 수 있다
+  strokes = [];
+  redraw();
+}
+
+function updateHistory() {
+  $('tool-undo').disabled = !done.length;
+  $('tool-redo').disabled = !undone.length;
 }
 
 function extendStroke(s, x, y) {
@@ -194,12 +238,13 @@ function hideHand() {
 
 // 기능별 손 뼈대 색: 마지막으로 받은 action으로 정한다 (동작 이름은 gesture가 바꿀 수 있어 쓰지 않는다).
 // null은 지금 펜 색 (그리기: 무슨 색으로 그려질지, 다음 색: 바뀐 색을 손에서 바로 보여 준다)
-const MODE_COLORS = { draw: null, next_color: null, erase: '#868e96', hover: '#2f9e44', up: '#495057', clear: '#e03131' };
+// clear는 지우기가 끝난 뒤라 원래 색(초록)으로 돌아온다. 빨강은 카운트다운 중에만 쓴다 (CLEAR_COLOR)
+const MODE_COLORS = { draw: null, next_color: null, erase: '#868e96', hover: '#2f9e44', up: '#495057', clear: '#2f9e44' };
 const MODE_DEFAULT = '#2f9e44';
 // 손 아래에 같은 색으로 띄우는 기능 이름 (지금 어떤 기능이 발동 중인지 알려 준다)
 const MODE_LABELS = {
   draw: '그리기', erase: '지우개', hover: '이동', up: '대기', next_color: '색 변경',
-  clear: '전체 지우기', undo: '실행 취소', size_up: '굵게', size_down: '가늘게', save: '저장',
+  clear: '지웠어요', undo: '실행 취소', redo: '다시 실행', size_up: '굵게', size_down: '가늘게', save: '저장',
 };
 let handMode = 'hover';
 
@@ -211,7 +256,11 @@ function modeColor() {
 // 전체 지우기 카운트다운: 주먹을 쥐고 있는 동안 손바닥 가운데에 링을 채운다. 손을 펴면 취소된다.
 // gesture는 주먹이 처음 보인 때부터 fist_hold_ms(2초)를 세고, web은 동작이 확정된 뒤(약 0.2초 늦게) 주먹을 알게 되므로 그만큼 뺀다.
 // 주먹 여부는 landmarks의 동작 이름(fist)으로 본다. 이름이 바뀌면 링만 안 보이고 지우기는 그대로 동작한다.
+// 카운트다운 중에는 손 뼈대를 빨갛고 굵게, 깜빡이게 그려 지우기가 곧 실행된다는 것을 알린다.
+// 펜 색이 빨강이어도 그리기(가만히 있는 선)와 구분되도록 색만이 아니라 깜빡임으로도 알린다.
 const CLEAR_HOLD_S = 1.8;
+const CLEAR_COLOR = '#e03131';
+const CLEAR_BLINK_HZ = 3;
 const PALM = [0, 5, 9, 13, 17];  // 손바닥 가운데 = 손목과 손가락 뿌리의 평균
 let fistSince = null;            // web이 주먹을 처음 본 시각 (초)
 
@@ -233,11 +282,11 @@ function drawClearRing([cx, cy], progress) {
   hctx.beginPath();
   hctx.arc(cx, cy, r, 0, Math.PI * 2);
   hctx.stroke();
-  hctx.strokeStyle = '#e03131';
+  hctx.strokeStyle = CLEAR_COLOR;
   hctx.beginPath();
   hctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
   hctx.stroke();
-  drawLabel('전체 지우기', cx, cy + r + 22, '#e03131');
+  drawLabel('전체 지우기', cx, cy + r + 22, CLEAR_COLOR);
   drawLabel('손을 펴면 취소', cx, cy + r + 40, '#495057');
 }
 
@@ -265,9 +314,12 @@ function drawHand(params, ts, gesture) {
   const [lo, hi] = params.zone ?? [0, 1];
   const px = ([x, y]) => [(x - lo) / (hi - lo) * w, (y - lo) / (hi - lo) * h];
   const dim = guide.state === 'edge' ? 0.35 : 1;  // 가장자리에 걸린 손은 판별하지 않고 점도 찌그러지므로 흐리게
-  hctx.globalAlpha = 0.65 * dim;
-  hctx.strokeStyle = modeColor();
-  hctx.lineWidth = 2.5;
+  const counting = fistSince !== null && handMode !== 'clear';  // 전체 지우기 카운트다운 중 (지운 뒤에는 원래 색)
+  // 카운트다운 중에는 평소(0.65)보다 진하게, 0.45~1 사이로 깜빡인다
+  const wave = 0.5 + 0.5 * Math.cos(performance.now() / 1000 * 2 * Math.PI * CLEAR_BLINK_HZ);
+  hctx.globalAlpha = dim * (counting ? 0.45 + 0.55 * wave : 0.65);
+  hctx.strokeStyle = counting ? CLEAR_COLOR : modeColor();
+  hctx.lineWidth = counting ? 4.5 : 2.5;
   hctx.lineCap = 'round';
   hctx.beginPath();
   for (const [a, b] of HAND_LINKS) {
@@ -286,7 +338,7 @@ function drawHand(params, ts, gesture) {
 
   const palm = PALM.map((i) => px(points[i]));
   const center = [0, 1].map((k) => palm.reduce((s, p) => s + p[k], 0) / palm.length);
-  if (fistSince !== null && handMode !== 'clear') {
+  if (counting) {
     drawClearRing(center, Math.min((t - fistSince) / CLEAR_HOLD_S, 1));
   } else if (MODE_LABELS[handMode]) {
     const [wx, wy] = px(points[0]);  // 손목 아래에 기능 이름
@@ -302,8 +354,9 @@ const ACTIONS = {
   erase: (m) => { penDown(m.x, m.y, true); showCursor(m.x, m.y, false, true); },
   hover: (m) => { penUp(); showCursor(m.x, m.y, false); },
   up: () => { penUp(); cursor.hidden = true; },
-  clear: () => { penUp(); strokes = []; redraw(); },
-  undo: () => { penUp(); strokes.pop(); redraw(); },
+  clear: () => clearAll(),
+  undo: () => undo(),
+  redo: () => redo(),
   next_color: () => { pen.color = (pen.color + 1) % COLORS.length; updateToolbar(); },
   size_up: () => { pen.size = Math.min(pen.size + 1, SIZES.length - 1); updateToolbar(); },
   size_down: () => { pen.size = Math.max(pen.size - 1, 0); updateToolbar(); },
@@ -396,6 +449,17 @@ $('tool-close').onclick = () => setMouse(false);
 tools.querySelectorAll('[data-tool]').forEach((b) => { b.onclick = () => setTool(b.dataset.tool); });
 $('tool-color').onclick = () => ACTIONS.next_color();
 $('tool-undo').onclick = () => ACTIONS.undo();
+$('tool-redo').onclick = () => ACTIONS.redo();
+
+// 단축키: Ctrl+Z 실행 취소, Ctrl+Y · Ctrl+Shift+Z 다시 실행 (Mac은 Cmd)
+document.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k === 'z' && !e.shiftKey) ACTIONS.undo();
+  else if (k === 'y' || (k === 'z' && e.shiftKey)) ACTIONS.redo();
+  else return;
+  e.preventDefault();
+});
 $('tool-clear').onclick = () => { if (confirm('그림을 모두 지울까요?')) ACTIONS.clear(); };
 $('tool-save').onclick = () => ACTIONS.save();
 
@@ -491,4 +555,5 @@ $('btn-close').onclick = closePair;
 $('btn-renew').onclick = startSession;
 
 updateToolbar();
+updateHistory();
 startSession();
