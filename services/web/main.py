@@ -45,7 +45,7 @@ class ActionIn(BaseModel):
 
     @model_validator(mode="after")
     def needs_point(self):
-        if self.action in ("draw", "hover") and (self.x is None or self.y is None):
+        if self.action in ("draw", "erase", "hover") and (self.x is None or self.y is None):
             raise ValueError(f"'{self.action}'에는 x, y가 필요하다")
         return self
 
