@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vision · gesture 처리 흐름</title>
+<style>
+:root{--bg:#eceff1;--paper:#fff;--ink:#111;--muted:#555;--rule:#111;--code:#f3f4f5}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.7 system-ui,"Malgun Gothic",sans-serif}
+.doc{max-width:860px;margin:24px auto;background:var(--paper);border:2px solid var(--rule);padding:0 22px 26px}
+@media (max-width:640px){.doc{margin:0;border-width:0 0 2px;padding:0 16px 20px}}
+code{font-family:ui-monospace,Consolas,monospace;font-size:.85em;color:var(--muted)}
+pre{background:var(--code);border:1px solid var(--rule);padding:10px 12px;overflow-x:auto;font:13px/1.55 ui-monospace,Consolas,monospace;margin:8px 0}
+pre code{color:var(--ink);font-size:1em}
+pre .c{color:#868e96}
+h1{margin:0;padding:18px 0 4px;font-size:26px}
+.sub{color:var(--muted);margin:0 0 8px}
+h2{margin:28px 0 10px;padding:6px 10px;background:var(--ink);color:var(--paper);font-size:16px}
+h3{margin:20px 0 6px;font-size:15px}
+.tw{overflow-x:auto;margin:8px 0}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{border:1px solid var(--rule);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--code);font-weight:600;white-space:nowrap}
+ul{padding-left:22px;margin:6px 0}
+li{margin:3px 0}
+.flow{display:grid;gap:6px;margin:10px 0}
+.lane{border:2px solid var(--ink);padding:8px 10px}
+.lane b{display:block;margin-bottom:4px}
+.steps{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.steps span{border:1px solid var(--rule);background:var(--code);padding:2px 8px;font-size:13px;white-space:nowrap}
+.steps i{font-style:normal;color:var(--muted)}
+.arrow{text-align:center;font-size:13px;color:var(--muted)}
+.handfig{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start}
+.handfig svg{flex:0 0 auto;width:220px;max-width:100%;height:auto;border:1px solid var(--rule)}
+.handfig .tw{flex:1 1 300px}
+.key{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:4px;vertical-align:-1px}
+</style>
+</head>
+<body>
+<div class="doc">
+
+<h1>vision · gesture 처리 흐름</h1>
+<p class="sub">휴대폰 사진 한 장이 그림판 명령이 되기까지 · <code>services/vision/app/detector.py</code>, <code>services/gesture/logic.py</code></p>
+
+<h2>1. 흐름</h2>
+
+<div class="flow">
+  <div class="lane"><b>vision — 손이 어디 있나</b>
+    <div class="steps"><span>JPEG 디코딩</span><i>→</i><span>좌우 반전</span><i>→</i><span>MediaPipe Hands</span><i>→</i><span>손 하나 고르기</span></div>
+  </div>
+  <div class="arrow">▼ 손 점 21개 <code>[x, y, z]</code> (손이 없으면 <code>hand: null</code>)</div>
+  <div class="lane"><b>gesture — 무슨 손 모양이고 무엇을 할까</b>
+    <div class="steps"><span>떨림 보정</span><i>→</i><span>손 모양 판별</span><i>→</i><span>4프레임 확인</span><i>→</i><span>기능으로 바꾸기</span></div>
+  </div>
+  <div class="arrow">▼ <code>draw</code> · <code>erase</code> · <code>hover</code> · <code>up</code> · <code>clear</code> · <code>next_color</code></div>
+  <div class="lane"><b>web 그림판</b></div>
+</div>
+
+<p>프레임은 한 장씩 차례로 지나간다. vision은 gesture가 답해야 다음 프레임을 받고, gesture는 web 응답을 기다리지 않는다.</p>
+
+<h2>2. MediaPipe 활용 (vision)</h2>
+
+<h3>사용한 모델</h3>
+<p><b>MediaPipe Hands</b> (<code>mediapipe==0.10.18</code>) lite 모델 2개</p>
+<pre><code>palm_detection_lite.tflite  (1.9MB)  손바닥 위치 찾기   <span class="c"># 추적 중엔 건너뜀</span>
+hand_landmark_lite.tflite   (2.0MB)  점 21개 찾기</code></pre>
+<ul>
+  <li><b>GPU 없이 실시간</b>: CPU로 한 장 약 20~30ms (15fps 충분)</li>
+  <li><b>학습 불필요</b>: 점 21개를 바로 주므로 gesture는 거리 규칙만으로 판단</li>
+  <li><b>설치만 하면 끝</b>: 모델이 패키지 안에 있어 따로 내려받지 않음</li>
+</ul>
+
+<div class="handfig">
+<svg viewBox="0 0 260 300" role="img" aria-label="MediaPipe 손 점 21개">
+  <g stroke="#adb5bd" stroke-width="3" fill="none" stroke-linecap="round">
+    <polyline points="130,280 95,255 70,225 52,195 38,168"/>
+    <polyline points="130,280 105,170 100,120 97,90 95,62"/>
+    <polyline points="132,165 132,110 132,75 132,45"/>
+    <polyline points="158,170 162,120 165,90 167,65"/>
+    <polyline points="130,280 182,182 192,145 198,120 203,98"/>
+    <polyline points="105,170 132,165 158,170 182,182"/>
+  </g>
+  <g font-size="11" font-family="ui-monospace,Consolas,monospace" text-anchor="middle">
+    <circle cx="130" cy="280" r="7" fill="#111"/><text x="130" y="298">0</text>
+    <circle cx="95" cy="255" r="4" fill="#adb5bd"/>
+    <circle cx="70" cy="225" r="4" fill="#adb5bd"/>
+    <circle cx="52" cy="195" r="4" fill="#adb5bd"/>
+    <circle cx="38" cy="168" r="7" fill="#e03131"/><text x="24" y="165">4</text>
+    <circle cx="105" cy="170" r="4" fill="#adb5bd"/>
+    <circle cx="100" cy="120" r="6" fill="#1971c2"/><text x="85" y="124">6</text>
+    <circle cx="97" cy="90" r="4" fill="#adb5bd"/>
+    <circle cx="95" cy="62" r="7" fill="#e03131"/><text x="95" y="48">8</text>
+    <circle cx="132" cy="165" r="7" fill="#111"/><text x="132" y="186">9</text>
+    <circle cx="132" cy="110" r="6" fill="#1971c2"/><text x="146" y="106">10</text>
+    <circle cx="132" cy="75" r="4" fill="#adb5bd"/>
+    <circle cx="132" cy="45" r="7" fill="#e03131"/><text x="132" y="31">12</text>
+    <circle cx="158" cy="170" r="4" fill="#adb5bd"/>
+    <circle cx="162" cy="120" r="6" fill="#1971c2"/><text x="176" y="128">14</text>
+    <circle cx="165" cy="90" r="4" fill="#adb5bd"/>
+    <circle cx="167" cy="65" r="7" fill="#e03131"/><text x="167" y="51">16</text>
+    <circle cx="182" cy="182" r="4" fill="#adb5bd"/>
+    <circle cx="192" cy="145" r="6" fill="#1971c2"/><text x="208" y="150">18</text>
+    <circle cx="198" cy="120" r="4" fill="#adb5bd"/>
+    <circle cx="203" cy="98" r="7" fill="#e03131"/><text x="217" y="90">20</text>
+  </g>
+</svg>
+<div class="tw"><table>
+  <tr><th>점</th><th>쓰는 곳</th></tr>
+  <tr><td><i class="key" style="background:#111"></i>0 손목</td><td>손가락 펴짐 계산의 기준</td></tr>
+  <tr><td><i class="key" style="background:#111"></i>9 중지 뿌리</td><td>같은 손 고르기, 손바닥 길이</td></tr>
+  <tr><td><i class="key" style="background:#e03131"></i>8 검지 끝</td><td>그리는 위치</td></tr>
+  <tr><td><i class="key" style="background:#e03131"></i>4 엄지 끝</td><td>핀치</td></tr>
+  <tr><td><i class="key" style="background:#e03131"></i>손가락 끝 · <i class="key" style="background:#1971c2"></i>가운데 마디</td><td>손가락 펴짐</td></tr>
+</table></div>
+</div>
+
+<h3>핵심 선택 세 가지</h3>
+<div class="tw"><table>
+  <tr><th>선택</th><th>내용</th><th>효과</th></tr>
+  <tr><td>추적 모드</td><td><code>static_image_mode=False</code>, 휴대폰(세션)마다 추적기 하나</td><td>앞 프레임 손 근처를 이어서 찾아 점이 덜 흔들리고 빠름</td></tr>
+  <tr><td>같은 손 고르기</td><td>손이 여럿이면 앞 프레임 손의 9번 점과 가장 가까운 손</td><td>두 손 사이를 오가며 좌표가 튀지 않음</td></tr>
+  <tr><td>손 1개만 찾기</td><td><code>max_num_hands=1</code></td><td>2 이상이면 손이 모자랄 때마다 손바닥 찾기를 다시 돌려 느려지고 오검출이 늘어남</td></tr>
+</table></div>
+
+<pre><code>mp.solutions.hands.Hands(
+    static_image_mode=False,   <span class="c"># 앞 프레임 손을 이어서 추적</span>
+    max_num_hands=1,
+    model_complexity=0,        <span class="c"># lite</span>
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5,
+)</code></pre>
+
+<h2>3. 손 모양 판단 (gesture)</h2>
+
+<h3>① 떨림 보정 — One Euro 필터</h3>
+<p>검지 끝 위치를 이전 위치와 섞는다. 손이 느리면 이전 위치를 많이 섞어 떨림을 없애고, 빠르면 적게 섞어 늦지 않게 한다.</p>
+<pre><code>a = _smoothing(min_cutoff + beta * speed, dt)       <span class="c"># 빠를수록 a가 커짐</span>
+pos = (a * x + (1 - a) * px, a * y + (1 - a) * py)</code></pre>
+
+<h3>② 손가락 펴짐 — 비율과 기준선 두 개</h3>
+<pre><code>r = 손목→손가락끝 거리 / 손목→가운데마디 거리   <span class="c"># 펴지면 1보다 큼</span>
+
+펴져 있었으면: r &gt;= 0.95 일 때 계속 펴짐
+접혀 있었으면: r &gt;  1.1  일 때 펴짐</code></pre>
+<ul>
+  <li>비율이라서 손이 카메라에 가깝든 멀든 같은 기준을 쓴다.</li>
+  <li>0.95~1.1 사이면 직전 상태를 유지해 펴짐·접힘이 깜빡이지 않는다.</li>
+  <li>핀치(엄지 끝–검지 끝 거리 ÷ 손바닥 길이)도 0.3 / 0.45 두 기준을 쓴다.</li>
+  <li>손이 화면 테두리에 걸리면 판별하지 않고 직전 동작을 이어 간다.</li>
+</ul>
+
+<div class="tw"><table>
+  <tr><th>검지</th><th>중지</th><th>약지</th><th>새끼</th><th>손 모양</th><th>기능</th></tr>
+  <tr><td>●</td><td>○</td><td>○</td><td>○</td><td><code>index_up</code></td><td>그리기</td></tr>
+  <tr><td>●</td><td>●</td><td>○</td><td>○</td><td><code>two_fingers</code></td><td>지우개</td></tr>
+  <tr><td>●</td><td>●</td><td>●</td><td>●</td><td><code>open_palm</code></td><td>커서만 이동</td></tr>
+  <tr><td>○</td><td>○</td><td>○</td><td>○</td><td><code>fist</code></td><td>펜 들기 (2초 유지하면 전체 지우기)</td></tr>
+  <tr><td>엄지와 맞닿음</td><td>●</td><td>●</td><td>●</td><td><code>pinch</code></td><td>다음 색</td></tr>
+</table></div>
+<p>● 펴짐 ○ 접힘. 짝은 <code>services/gesture/mapping.json</code>에서 바꾼다.</p>
+
+<h3>③ 4프레임 확인 + 선 앞부분 채우기</h3>
+<p>새 손 모양이 4프레임(약 0.27초) 연속 보여야 바꾼다. 한 프레임짜리 오인식이 걸러진다. 기다리는 동안의 위치는 모아 두었다가, 확정되면 먼저 그려서 선 앞부분이 잘리지 않게 한다.</p>
+<div class="tw"><table>
+  <tr><th>프레임</th><th>보인 모양</th><th>확정 동작</th><th>web에 가는 명령</th></tr>
+  <tr><td>10</td><td>two_fingers (1)</td><td>index_up</td><td><code>draw(p10)</code></td></tr>
+  <tr><td>11</td><td>two_fingers (2)</td><td>index_up</td><td><code>draw(p11)</code></td></tr>
+  <tr><td>12</td><td>two_fingers (3)</td><td>index_up</td><td><code>draw(p12)</code></td></tr>
+  <tr><td>13</td><td>two_fingers (4)</td><td>two_fingers</td><td><code>up</code> → <code>erase(p10, p11, p12)</code> → <code>erase(p13)</code></td></tr>
+</table></div>
+
+<h3>④ 실수 막기</h3>
+<ul>
+  <li><b>손을 잠깐 놓침</b>: 3프레임까지는 기다리고, 그 뒤에 펜을 든다.</li>
+  <li><b>전체 지우기</b>: 주먹을 처음 보인 때부터 2초 유지해야 실행된다.</li>
+  <li><b>한 번만 실행</b>: 펜 들기·전체 지우기·다음 색은 손 모양이 바뀐 순간 한 번만 보낸다.</li>
+</ul>
+
+</div>
+</body>
+</html>
