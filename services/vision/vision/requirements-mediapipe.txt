@@ -1,0 +1,4 @@
+# pip install --no-deps -r requirements-mediapipe.txt  (의존성은 requirements.txt에 있다)
+# 0.10.18: MediaPipe Hands(mp.solutions.hands)와 모델 파일이 패키지 안에 있어 따로 내려받지 않는다.
+#          linux x86_64·arm64(Apple Silicon의 Docker) 휠이 모두 있는 마지막 버전이다.
+mediapipe==0.10.18

@@ -1,0 +1,12 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+httpx==0.28.1
+# mediapipe가 실제로 쓰는 것만 직접 고정한다. mediapipe 자체는 Dockerfile에서 --no-deps로 설치한다
+# (기본 의존성인 jax·jaxlib(약 350MB)와 GUI용 opencv-contrib-python(libGL 필요)을 피하려고)
+numpy==1.26.4
+opencv-python-headless==4.11.0.86
+protobuf==4.25.9
+absl-py==2.1.0
+attrs==24.3.0
+flatbuffers==24.12.23
+matplotlib==3.9.4
