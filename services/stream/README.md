@@ -34,6 +34,8 @@
 
 카메라 페이지는 기본으로 전면 카메라를 쓰고(미리보기만 거울처럼 보임), **카메라 전환** 버튼으로 후면으로 바꿀 수 있다. 보내는 프레임은 뒤집지 않는다 (좌우 반전은 vision에서 한 번만).
 
+프레임은 휴대폰 방향과 상관없이 항상 320×240(가로 4:3)이다. 카메라 비율이 다르면 가운데를 잘라 낸다. 세로 프레임을 섞어 보내면 같은 원을 그려도 그림판에서 가로로 약 2.3배 늘어난 타원이 되기 때문이다. 미리보기도 보내는 영역만 보여 주고, 휴대폰을 세로로 들면 "가로로 두면 더 넓게 찍혀요" 안내가 나온다.
+
 ## 실행
 
 ```bash
@@ -88,7 +90,7 @@ docker compose run --rm --no-deps stream pytest -q
 | `STREAM_VISION_URL` | `http://vision:8003/frames` | ④ 프레임을 보낼 곳. 비우면 보내지 않는다 (`vision_disabled`) |
 | `STREAM_EVENTS_URL` | `http://web:8000/events` | ⑧ 연결·끊김을 알릴 곳. 비우면 알리지 않는다 |
 | `STREAM_TIMEOUT_MS` | `200` | vision 응답을 기다리는 최대 시간 |
-| `STREAM_WIDTH`, `STREAM_HEIGHT` | `320`, `240` | 휴대폰이 보내는 프레임 크기 (세로로 찍으면 240×320). 비율은 유지한다 |
+| `STREAM_WIDTH`, `STREAM_HEIGHT` | `320`, `240` | 휴대폰이 보내는 프레임 크기. 카메라 비율이 다르면 가운데를 잘라 항상 이 크기로 보낸다 |
 | `STREAM_JPEG_QUALITY` | `0.6` | JPEG 품질 |
 | `STREAM_MAX_FPS` | `15` | 최대 초당 프레임 수 |
 | `STREAM_DEV_SID` | (없음) | 개발용 세션. 정하면 `X-Session-Id`가 없을 때 `?sid=` 또는 이 값을 쓴다 |
