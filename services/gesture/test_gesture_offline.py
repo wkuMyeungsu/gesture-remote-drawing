@@ -12,15 +12,25 @@ FPS = 15
 FRAME_MS = 1000 // FPS
 
 
-def fake_hand(pose, dx=0.0, dy=0.0):
-    """손목 (0.5, 0.8) 기준으로 위를 향한 손 21점을 만든다. pose = 펴진 손가락 (검지, 중지, 약지, 새끼)."""
+def fake_hand(pose, dx=0.0, dy=0.0, index_ratio=None, pinch=False):
+    """손목 (0.5, 0.8) 기준으로 위를 향한 손 21점을 만든다. pose = 펴진 손가락 (검지, 중지, 약지, 새끼).
+
+    index_ratio를 주면 검지 끝을 (손목→끝 거리) / (손목→가운데 마디 거리)가 그 값이 되게 놓는다.
+    pinch=True면 엄지 끝을 검지 끝 바로 옆에 놓는다.
+    vision처럼 화면 밖 점은 0·1로 자른다.
+    """
     wx, wy = 0.5 + dx, 0.8 + dy
     pts = [[wx, wy, 0.0]]
     pts += [[wx - 0.05 * i, wy - 0.03 * i, 0.0] for i in range(1, 5)]  # 엄지 (판별에 안 씀)
     for (ox, up) in zip((-0.04, 0.0, 0.04, 0.08), pose):
         heights = (0.15, 0.22, 0.27, 0.31) if up else (0.15, 0.20, 0.16, 0.12)  # MCP, PIP, DIP, TIP
         pts += [[wx + ox, wy - h, 0.0] for h in heights]
-    return pts
+    if index_ratio is not None:
+        px, py = pts[6][0] - wx, pts[6][1] - wy
+        pts[8] = [wx + px * index_ratio, wy + py * index_ratio, 0.0]
+    if pinch:
+        pts[4] = [pts[8][0] - 0.01, pts[8][1] + 0.01, 0.0]
+    return [[min(max(x, 0.0), 1.0), min(max(y, 0.0), 1.0), z] for x, y, z in pts]
 
 
 POSE = {
@@ -29,6 +39,7 @@ POSE = {
     "open_palm": (True, True, True, True),
     "fist": (False, False, False, False),
     "unknown": (False, True, False, True),
+    "pinch": (False, True, True, True),
 }
 
 
@@ -37,10 +48,11 @@ class Runner:
         self.store = logic.SessionStore(config=logic.Config())
         self.frame = 0
 
-    def feed(self, pose, n=1, dx=0.0, dy=0.0):
+    def feed(self, pose, n=1, dx=0.0, dy=0.0, **kw):
         out = []
         for _ in range(n):
-            hand = None if pose is None else {"handedness": "Right", "score": 0.9, "points": fake_hand(POSE[pose], dx, dy)}
+            kw_ = {"pinch": True, **kw} if pose == "pinch" else kw
+            hand = None if pose is None else {"handedness": "Right", "score": 0.9, "points": fake_hand(POSE[pose], dx, dy, **kw_)}
             msg = {"sid": "test", "frame_id": self.frame, "ts": 1_000_000 + self.frame * FRAME_MS, "hand": hand}
             out += self.store.process(msg)
             self.frame += 1
@@ -61,14 +73,15 @@ def run_scenarios():
 
     # 1. 포즈 판별
     for name, pose in POSE.items():
-        results.append(check(f"classify {name}", logic.classify(fake_hand(pose)) == name, logic.classify(fake_hand(pose))))
+        got = logic.classify(fake_hand(pose, pinch=name == "pinch"))
+        results.append(check(f"classify {name}", got == name, got))
 
     # 2. 검지를 들면 hold_frames 뒤부터 draw, 좌표는 0~1이고 좌우 반전됨
     r = Runner()
     first = r.feed("index_up", 3)
     cmds = r.feed("index_up", 5, dx=0.2)
     results.append(check("no output before gesture is stable", first == [], actions(first)))
-    results.append(check("draw every frame", actions(cmds) == ["draw"] * 5, actions(cmds)))
+    results.append(check("draw every frame, stroke start backfilled", actions(cmds) == ["draw"] * 8, actions(cmds)))
     results.append(check("coordinates within 0..1", all(0 <= c["x"] <= 1 and 0 <= c["y"] <= 1 for c in cmds)))
     results.append(check("not mirrored by default: hand moves right -> x goes right", cmds[-1]["x"] > cmds[0]["x"], [c["x"] for c in cmds]))
     mirrored = logic.Session("m", logic.load_mapping(), logic.Config(mirror=True))
@@ -89,12 +102,12 @@ def run_scenarios():
 
     # 5. 두 손가락으로 바꾸면 up 한 번 뒤 erase(좌표 포함), 다시 검지로 바꾸면 up 뒤 draw
     cmds = r.feed("two_fingers", 6)
-    results.append(check("draw -> two_fingers sends up then erase",
-                         actions(cmds) == ["draw"] * 3 + ["up"] + ["erase"] * 3, actions(cmds)))
+    results.append(check("draw -> two_fingers sends up then erase (backfilled)",
+                         actions(cmds) == ["draw"] * 3 + ["up"] + ["erase"] * 6, actions(cmds)))
     results.append(check("erase carries x, y", all("x" in c and "y" in c for c in cmds if c["action"] == "erase")))
     cmds = r.feed("index_up", 6)
-    results.append(check("erase -> index_up sends up then draw",
-                         actions(cmds) == ["erase"] * 3 + ["up"] + ["draw"] * 3, actions(cmds)))
+    results.append(check("erase -> index_up sends up then draw (backfilled)",
+                         actions(cmds) == ["erase"] * 3 + ["up"] + ["draw"] * 6, actions(cmds)))
     cmds = r.feed("open_palm", 6)
     results.append(check("draw -> open_palm sends up then hover",
                          actions(cmds) == ["draw"] * 3 + ["up"] + ["hover"] * 3, actions(cmds)))
@@ -118,7 +131,7 @@ def run_scenarios():
     acts = actions(cmds)
     results.append(check("fist sends up once and clear once", acts.count("clear") == 1 and acts.count("up") == 1, acts))
     clear_frame = next((c["frame_id"] for c in cmds if c["action"] == "clear"), -1)
-    results.append(check("clear only after ~1s hold", clear_frame - fist_start >= FPS, clear_frame - fist_start))
+    results.append(check("clear ~1s after fist first appears", FPS <= clear_frame - fist_start <= FPS + 2, clear_frame - fist_start))
 
     # 9. 짧은 주먹은 clear를 보내지 않는다
     r = Runner()
@@ -140,12 +153,83 @@ def run_scenarios():
     results.append(check("landmarks every frame with 21 points",
                          all(len(l) == 1 and len(l[0]["params"]["points"]) == 21 for l in lms), [len(l) for l in lms]))
     results.append(check("landmarks do not change actions",
-                         [c["action"] for cmds in per_frame for c in cmds if c["action"] != "landmarks"] == ["draw"] * 3))
+                         [c["action"] for cmds in per_frame for c in cmds if c["action"] != "landmarks"] == ["draw"] * 6))
     lost = [c for i in range(6, 12) for c in store.process({"sid": "l", "frame_id": i, "ts": i * FRAME_MS, "hand": None})]
     cleared = [c for c in lost if c["action"] == "landmarks"]
     results.append(check("hand loss clears landmarks once", len(cleared) == 1 and cleared[0]["params"]["points"] == [], actions(lost)))
 
-    # 12. 형식 검사
+    # 12. 가장자리: 손목이 아래 테두리에 잘리면 주먹처럼 보여도 그리기를 이어 간다 (좌표는 계속)
+    r = Runner()
+    r.feed("index_up", 6)
+    cmds = r.feed("fist", 8, dy=0.2)
+    results.append(check("wrist clipped at bottom edge keeps drawing", actions(cmds) == ["draw"] * 8, actions(cmds)))
+    results.append(check("drawing at edge still sends x, y", all("x" in c for c in cmds)))
+    cmds = r.feed("fist", 6)
+    results.append(check("same pose inside frame is recognized", "up" in actions(cmds), actions(cmds)))
+
+    # 13. 가장자리: 검지 끝이 왼쪽 테두리에 닿으면 두 손가락으로 바뀌지 않는다
+    r = Runner()
+    r.feed("index_up", 6)
+    cmds = r.feed("two_fingers", 8, dx=-0.46)
+    results.append(check("fingertip at side edge keeps drawing", actions(cmds) == ["draw"] * 8, actions(cmds)))
+
+    # 14. 기준 두 개: 기준선 근처(1.0)는 직전 상태를 유지한다
+    r = Runner()
+    r.feed("index_up", 6)
+    cmds = r.feed("index_up", 8, index_ratio=1.0) + r.feed("index_up", 4, index_ratio=1.12)
+    results.append(check("near-threshold finger stays extended", actions(cmds) == ["draw"] * 12, actions(cmds)))
+    cmds = r.feed("index_up", 6, index_ratio=0.9)
+    results.append(check("clearly folded finger becomes fist", "up" in actions(cmds), actions(cmds)))
+    r = Runner()
+    r.feed("fist", 6)
+    cmds = r.feed("index_up", 8, index_ratio=1.0)
+    results.append(check("near-threshold finger stays folded", "draw" not in actions(cmds), actions(cmds)))
+    results.append(check("stateless classify unchanged at 1.0", logic.classify(fake_hand(POSE["index_up"], index_ratio=1.0)) == "fist"))
+
+    # 15. 획 시작 채우기: 손바닥으로 움직이다 검지를 들면, 검지가 처음 보인 자리부터 선이 시작된다
+    r = Runner()
+    r.feed("open_palm", 6)
+    hover_then = [c for i in range(4) for c in r.feed("index_up", 1, dx=0.02 * i)]
+    draws = [c for c in hover_then if c["action"] == "draw"]
+    results.append(check("stroke start backfilled from first index frame",
+                         actions(hover_then) == ["hover"] * 3 + ["draw"] * 4 and draws[0]["x"] < draws[-1]["x"], actions(hover_then)))
+    results.append(check("backfilled points follow hand path", [c["x"] for c in draws] == sorted(c["x"] for c in draws), [c["x"] for c in draws]))
+
+    # 16. One Euro: 멈춘 손의 떨림은 EMA보다 잘 줄이고, 빠른 손에는 EMA보다 덜 늦는다
+    import random
+    rnd = random.Random(0)
+    f, ema, a = logic.OneEuroFilter(1.0, 10.0), None, 0.4
+    raw_still, oe_still, ema_still = [], [], []
+    for i in range(60):
+        x = 0.5 + rnd.uniform(-0.01, 0.01)
+        ox, _ = f.update(x, 0.5, i / FPS)
+        ema = x if ema is None else a * x + (1 - a) * ema
+        if i >= 15:
+            raw_still.append(x); oe_still.append(ox); ema_still.append(ema)
+    spread = lambda v: max(v) - min(v)
+    results.append(check("one euro reduces still-hand jitter more than EMA",
+                         spread(oe_still) < spread(ema_still) < spread(raw_still), (spread(raw_still), spread(ema_still), spread(oe_still))))
+    f, ema = logic.OneEuroFilter(1.0, 10.0), None
+    for i in range(20):
+        x = 0.2 + 0.03 * i  # 초당 화면 폭의 45%
+        ox, _ = f.update(x, 0.5, i / FPS)
+        ema = x if ema is None else a * x + (1 - a) * ema
+    results.append(check("one euro lags less than EMA on fast moves", x - ox < x - ema, (round(x - ox, 4), round(x - ema, 4))))
+
+    # 17. pinch(OK 사인) → next_color 한 번만
+    r = Runner()
+    r.feed("index_up", 6)
+    cmds = r.feed("pinch", 10)
+    results.append(check("pinch sends next_color once", actions(cmds).count("next_color") == 1 and actions(cmds).count("up") == 1, actions(cmds)))
+    cmds = r.feed("open_palm", 6) + r.feed("pinch", 6)
+    results.append(check("pinch again after release sends next_color again", actions(cmds).count("next_color") == 1, actions(cmds)))
+    results.append(check("classify pinch", logic.classify(fake_hand(POSE["pinch"], pinch=True)) == "pinch"))
+    fist_thumb_near = fake_hand(POSE["fist"])
+    fist_thumb_near[4] = [fist_thumb_near[8][0] - 0.01, fist_thumb_near[8][1] + 0.01, 0.0]
+    results.append(check("fist with thumb near index is not pinch", logic.classify(fist_thumb_near) == "fist"))
+    results.append(check("three fingers without touching thumb is not pinch", logic.classify(fake_hand(POSE["pinch"])) == "unknown"))
+
+    # 18. 형식 검사
     bad = [{}, {"sid": "x", "frame_id": 1, "ts": 1, "hand": {"points": [[0, 0]] * 5}}, {"sid": "x", "frame_id": "1", "ts": 1, "hand": None}]
     rejected = 0
     for msg in bad:

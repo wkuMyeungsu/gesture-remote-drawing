@@ -1,16 +1,18 @@
 # 서비스 간 주고받는 데이터
 
-연결 번호(①~⑧)와 전체 구조는 `docs/architecture.html`을 따른다. 아래는 모두 제안 단계이고, 양쪽 담당자가 확인하면 표의 상태를 "합의"로 바꾼다.
+연결 번호(①~⑧)와 전체 구조는 `docs/architecture.html`을 따른다.
+
+상태: **제안**(문서만 있음) → **구현**(양쪽이 이 형식대로 구현해 dev에 병합) → **합의**(양쪽 담당자가 이 문서를 확인). 형식을 바꿀 때는 이 문서부터 고치고 양쪽 담당자에게 PR 리뷰를 받는다.
 
 | 번호 | 보내는 쪽 → 받는 쪽 | 방식 | 상태 |
 |---|---|---|---|
-| ② | PC 브라우저 → security | `POST /api/session` | 제안 |
-| ① ③ | 휴대폰 ↔ stream (security 경유) | WebSocket `/ws/stream` | 제안 |
-| ④ | stream → vision | `POST http://vision:8003/frames` | 제안 |
-| ⑤ | vision → gesture | `POST http://gesture:8004/landmarks` | 제안 |
-| ⑥ | gesture → web | `POST http://web:8000/actions` | 제안 |
-| ⑦ ② | web → PC 브라우저 (security 경유) | WebSocket `/ws/board?sid=…` | 제안 |
-| ⑧ | stream → web | `POST http://web:8000/events` | 제안 |
+| ② | PC 브라우저 → security | `POST /api/session` | 구현 |
+| ① ③ | 휴대폰 ↔ stream (security 경유) | WebSocket `/ws/stream` | 구현 |
+| ④ | stream → vision | `POST http://vision:8003/frames` | 구현 |
+| ⑤ | vision → gesture | `POST http://gesture:8004/landmarks` | 구현 |
+| ⑥ | gesture → web | `POST http://web:8000/actions` | 구현 |
+| ⑦ ② | web → PC 브라우저 (security 경유) | WebSocket `/ws/board?sid=…` | 구현 |
+| ⑧ | stream → web | `POST http://web:8000/events` | 구현 |
 
 ## 공통
 
@@ -21,7 +23,7 @@
 | `ts` | 정수 (유닉스 ms) | stream이 프레임을 받은 시각. 이후 모든 메시지에 그대로 전달 |
 | `x`, `y` | 실수 0~1 | 정규화 좌표. 왼쪽 위가 (0, 0), 좌우 반전이 끝난 화면 기준 |
 
-내부 요청(④⑤⑥⑧)은 성공하면 `200`과 `{"ok": true}`, 형식이 틀리면 `400`을 돌려준다. 각 요청의 타임아웃은 200ms이다.
+내부 요청(④⑤⑥⑧)은 성공하면 `200`과 `{"ok": true}`, 형식이 틀리면 `400`을 돌려준다. 응답에 다른 필드가 더 붙을 수 있다 (예: web의 `delivered`). 각 요청의 타임아웃은 200ms이다.
 
 ## ② 세션 발급 — PC 브라우저 → security
 
@@ -36,7 +38,9 @@
 }
 ```
 
-- `token`은 1회용이다. 휴대폰이 `/m/?token=…`로 접속하면 security가 `sid` 쿠키(`HttpOnly; Secure; SameSite=Strict`)를 발급하고 토큰을 폐기한다.
+- `pair_url`의 호스트는 `.env`의 `SECURITY_CERT_HOST`(PC 내부 IP)다. 비어 있으면 요청의 `Host`를 쓴다.
+- 발급이 너무 잦으면 `429`, 세션이 가득 차면 `503`.
+- `token`은 1회용이다. 휴대폰이 `/m/?token=…`로 접속하면 security가 `sid` 쿠키(`HttpOnly; Secure; SameSite=Strict`)를 발급하고 토큰을 폐기한다. 만료되거나 이미 쓴 토큰이면 `401` 안내 페이지를 보여 준다.
 - 이후 휴대폰 요청은 쿠키로 확인하고, nginx가 `X-Session-Id: <sid>` 헤더를 붙여 stream으로 넘긴다.
 
 ## ①③ 프레임 전송 — 휴대폰 ↔ stream
@@ -49,16 +53,17 @@
 { "frame_id": 42, "jpeg": "<base64>" }
 ```
 
-- 해상도 320×240, JPEG 품질 0.6, 최대 15fps.
+- 해상도 320×240, JPEG 품질 0.6, 최대 15fps. 연결 직후 stream이 `{"type": "config", …}`로 이 값을 알려 준다.
 - 다음 프레임은 아래 `ack`를 받은 뒤에 보낸다.
 
 stream → 휴대폰
 
 ```json
 { "type": "ack", "frame_id": 42, "dropped": false }
+{ "type": "ack", "frame_id": 43, "dropped": true, "reason": "vision_timeout" }
 ```
 
-`dropped: true`는 vision이 바빠서 그 프레임을 버렸다는 뜻이다.
+`dropped: true`는 그 프레임을 버렸다는 뜻이고, `reason`에 이유가 붙는다 (`busy` `vision_timeout` `vision_unreachable` `vision_<상태 코드>` `invalid_frame` 등). 전체 목록과 `config` 형식은 `services/stream/README.md`.
 
 ## ④ 프레임 분석 요청 — stream → vision
 
@@ -67,7 +72,7 @@ stream → 휴대폰
 - 본문: JPEG 바이트 (`Content-Type: image/jpeg`)
 - 헤더: `X-Session-Id`, `X-Frame-Id`, `X-Ts`
 
-vision은 응답을 먼저 돌려주지 않고, ⑤를 보낸 뒤 `{"ok": true}`로 답한다. stream은 이 응답을 받아야 다음 프레임을 보낸다.
+vision은 응답을 먼저 돌려주지 않고, ⑤를 보낸 뒤 `{"ok": true}`로 답한다. stream은 이 응답을 받아야 다음 프레임을 보낸다. 헤더·JPEG가 틀리면 `400`, ⑤가 실패하거나 200ms를 넘기면 `502`로 답한다.
 
 ## ⑤ 손 좌표 — vision → gesture
 
@@ -87,6 +92,8 @@ vision은 응답을 먼저 돌려주지 않고, ⑤를 보낸 뒤 `{"ok": true}`
 ```
 
 - `points`는 MediaPipe Hands 순서의 21개 점 `[x, y, z]`. 0 손목, 4 엄지 끝, 8 검지 끝, 12 중지 끝, 16 약지 끝, 20 새끼 끝.
+- `x`, `y`는 0~1로 자른다 (화면 밖 점은 0 또는 1). `z`는 손목 기준 상대 깊이 (작을수록 카메라에 가까움).
+- `handedness`는 사용자 기준 실제 손 (`"Left"` / `"Right"`).
 - 손이 없으면 `"hand": null`.
 - 손이 둘 이상이면 `score`가 가장 높은 손 하나만 보낸다.
 
@@ -108,6 +115,9 @@ gesture는 "어떤 동작을 알아봤는지(`gesture`)"와 "어떤 기능을 �
 | `action` | 문자열 | 아래 표 (합의) | 실행할 기능 |
 | `x`, `y` | 실수 0~1 | gesture | 좌표가 필요한 기능에만 |
 | `params` | 객체 (선택) | 아래 표 (합의) | 기능별 추가 값. 형식을 바꾸지 않고 값을 늘릴 때 쓴다 |
+
+- web은 `{"ok": true, "delivered": <받은 PC 브라우저 수>}`로 답한다. 그 `sid`를 보고 있는 화면이 없으면 `delivered: 0`이고, 그래도 `200`이다.
+- `sid`·`action`이 없거나, `draw`·`hover`인데 `x`·`y`가 없으면 `400`.
 
 ### `action` 표
 
@@ -131,24 +141,15 @@ gesture는 "어떤 동작을 알아봤는지(`gesture`)"와 "어떤 기능을 �
 
 ### 대응표 `services/gesture/mapping.json`
 
-동작 이름과 기능 이름의 짝은 gesture 담당이 이 파일로 관리한다. 짝을 바꾸는 데에는 다른 파트와 합의가 필요 없다.
+동작 이름과 기능 이름의 짝은 gesture 담당이 이 파일로 관리한다. 짝을 바꾸는 데에는 다른 파트와 합의가 필요 없다. 이 문서에 복사해 두면 어긋나므로, 현재 짝은 파일을 직접 본다.
 
-```json
-{
-  "index_up": "draw",
-  "open_palm": "hover",
-  "none": "up",
-  "fist_hold": "clear",
-  "swipe_left": "undo",
-  "pinch": "next_color"
-}
-```
+`{"동작 이름": "action", …}` 형식이다. 파일에 없는 기능(`action` 표에는 있지만 짝이 없는 것)은 손으로 실행할 수 없다.
 
 ## ⑦② 화면 반영 — web → PC 브라우저
 
-`wss://<PC IP>/ws/board?sid=…`
+`ws://localhost/ws/board?sid=…` (PC에서 `https://<PC IP>/`로 열었으면 `wss://<PC IP>/ws/board?sid=…`)
 
-web은 ⑥에서 받은 JSON에 `"type": "action"`을 붙여 같은 `sid`의 PC 브라우저에 보낸다. ⑧ 이벤트도 같은 통로로 보낸다.
+web은 ⑥에서 받은 JSON에서 `sid`를 빼고 `"type": "action"`을 붙여 같은 `sid`의 PC 브라우저에 보낸다. ⑧ 이벤트도 같은 통로로 보낸다. PC 브라우저 → web 메시지는 없다.
 
 ```json
 { "type": "action", "gesture": "index_up", "confidence": 0.95, "action": "draw", "x": 0.531, "y": 0.402, "frame_id": 42, "ts": 1793253600123 }
@@ -163,4 +164,4 @@ web은 ⑥에서 받은 JSON에 `"type": "action"`을 붙여 같은 `sid`의 PC 
 { "sid": "5f0c2a9e-…", "event": "connected" }
 ```
 
-`event`: `connected`(휴대폰 WebSocket 연결), `disconnected`(끊김).
+`event`: `connected`(휴대폰 WebSocket 연결), `disconnected`(끊김. stream이 꺼질 때도 연결돼 있던 세션마다 보낸다). 그 밖의 값은 web이 `400`으로 답한다.
