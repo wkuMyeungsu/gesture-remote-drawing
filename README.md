@@ -26,22 +26,50 @@ PC 브라우저 ─HTTPS─▶ [security] ─▶ [web]
 
 - 전체 구조와 연결: `docs/architecture.html`
 - 서비스 사이에 주고받는 데이터 형식: `docs/contracts/README.md`
+- 서비스별 설명·환경 변수·테스트: `services/<서비스>/README.md`
 
 ## 실행
 
 필요한 것: Docker Desktop (실행 중일 것), Docker Compose 2.24 이상.
 
-```bash
-docker compose up --build              # 전체
-docker compose up --build web          # 서비스 하나만
-docker compose down                    # 종료
-docker compose ps                      # 상태 (healthy 확인)
+### 한 번에 (Windows)
+
+`services/security/start-windows.bat`을 더블클릭한다. PC IP를 `.env`에 넣고, 전체를 띄우고, 브라우저를 연다.
+
+1. PC: `http://localhost`에 그림판과 QR이 뜬다.
+2. 휴대폰: 같은 Wi-Fi에서 QR을 찍는다 → 인증서 경고는 "계속" → **촬영 시작**.
+3. PC 화면이 "휴대폰 연결됨"으로 바뀌면 검지를 들어 그린다.
+
+처음 한 번만: Windows 방화벽에서 443 인바운드 허용 (관리자 PowerShell)
+
+```powershell
+New-NetFirewallRule -DisplayName "gesture 443" -Direction Inbound -Protocol TCP -LocalPort 443 -Action Allow
 ```
 
-- 현재 `services/*`는 `/health`만 답하는 뼈대 서버다. 담당자가 자기 폴더의 `main.py`와 `Dockerfile`을 바꿔 가며 채운다.
-- 호스트 포트가 다른 프로그램과 겹치면 `.env.example`을 `.env`로 복사해 포트만 바꾼다.
+### 직접
+
+```bash
+docker compose up --build -d           # 전체
+docker compose up --build web          # 서비스 하나만
+docker compose ps                      # 상태 (5개 모두 healthy)
+docker compose down                    # 종료
+```
+
+- `.env`가 없거나 `SECURITY_CERT_HOST`가 비어 있으면 QR이 `localhost`로 나와 휴대폰이 접속하지 못한다. `.env.example`을 `.env`로 복사해 PC 내부 IP(`ipconfig`의 Wi-Fi IPv4)를 넣는다.
+- IP를 바꿨으면 `services/security/certs/`의 `cert.pem`·`key.pem`을 지우고 security를 다시 띄운다.
+- 호스트 포트가 다른 프로그램과 겹치면 `.env`에서 포트만 바꾼다.
 - 컨테이너 안에서 다른 서비스는 `localhost`가 아니라 서비스 이름으로 부른다 (`http://vision:8003`).
-- 휴대폰 브라우저에서 카메라(`getUserMedia`)를 쓰려면 페이지가 HTTPS여야 한다 (`localhost` 제외).
+
+### 연결 확인
+
+| 보고 싶은 것 | 주소 |
+|---|---|
+| 서비스 상태 | `docker compose ps` |
+| 세션별 프레임 수·버린 수·처리 시간 | `http://localhost:8002/sessions` (stream) |
+| 손을 찾은 수·gesture 전송 결과 | `http://localhost:8003/stats` (vision) |
+| 인식한 동작·기능·지연 | PC 그림판 위쪽 표시줄 (web) |
+
+앞 단계 없이 내 파트만 확인하는 도구: `services/stream/dev/fake_vision.py`, `services/vision/dev/try_image.py`, `services/web/dev/fake_gesture.py`.
 
 ## 브랜치
 
