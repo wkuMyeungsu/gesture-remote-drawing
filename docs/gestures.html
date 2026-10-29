@@ -37,9 +37,9 @@ li{margin:3px 0}
   <tr><td class="hand">☝️</td><td>검지만 펴기<br><code>index_up</code></td><td>그리기<br><code>draw</code></td><td>검지 끝을 따라 선이 그려짐</td></tr>
   <tr><td class="hand">✌️</td><td>검지 + 중지 펴기<br><code>two_fingers</code></td><td>지우개<br><code>erase</code></td><td>검지 끝이 지나간 자리를 지움 (30px)</td></tr>
   <tr><td class="hand">🖐️</td><td>손가락 4개 모두 펴기<br><code>open_palm</code></td><td>커서 이동<br><code>hover</code></td><td>그리지 않고 커서만 움직임</td></tr>
-  <tr><td class="hand">✊</td><td>주먹<br><code>fist</code></td><td>펜 들기<br><code>up</code></td><td>선을 끊고 커서를 숨김 (손 뼈대는 보임)</td></tr>
+  <tr><td class="hand">✊</td><td>주먹<br><code>fist</code></td><td>펜 들기<br><code>up</code></td><td>선을 끊고 커서를 숨김 (손 뼈대는 보임)<br>그대로 1초 쥐고 있으면 전체 지우기로 이어짐</td></tr>
   <tr><td class="hand">✊⏱</td><td>주먹 1초 유지<br><code>fist_hold</code></td><td>전체 지우기<br><code>clear</code></td><td>캔버스를 비움 (한 번만, 주먹이 처음 보인 때부터 1초)</td></tr>
-  <tr><td class="hand">👌</td><td>엄지·검지 끝 맞대고 나머지 3개 펴기 (OK 사인)<br><code>pinch</code></td><td>다음 색<br><code>next_color</code></td><td>펜 색이 다음 색으로 (한 번만)</td></tr>
+  <tr><td class="hand">👌</td><td>엄지·검지 끝 맞대고 나머지 3개 펴기 (OK 사인)<br><code>pinch</code></td><td>다음 색<br><code>next_color</code></td><td>펜 색이 다음 색으로 (한 번만)<br>또 바꾸려면 손을 폈다가 다시 👌</td></tr>
   <tr><td class="hand">∅</td><td>손이 안 보임<br><code>none</code></td><td>펜 들기<br><code>up</code></td><td>선을 끊고 커서·손 뼈대를 숨김</td></tr>
 </table></div>
 
@@ -52,6 +52,15 @@ li{margin:3px 0}
   <tr><td class="off">저장 <code>save</code></td><td>캔버스를 PNG로 내려받기</td></tr>
 </table></div>
 <p>짝을 추가하려면 gesture가 새 손 모양을 판별하고 <code>mapping.json</code>에 한 줄 넣는다 (web 수정 없음).</p>
+
+<h2>👌 핀치 하는 법</h2>
+<ul>
+  <li><b>모양</b>: 엄지 끝과 검지 끝을 붙이고, 중지·약지·새끼는 쭉 편다 (OK 사인).</li>
+  <li><b>맞닿음 기준</b>: 엄지–검지 끝 거리가 손바닥 길이의 30% 안. 붙였다 뗄 때는 45%를 넘어야 떨어진 것으로 본다.</li>
+  <li><b>유지</b>: 약 0.3초(4프레임) 그대로 두면 색이 한 번 바뀐다.</li>
+  <li><b>방향</b>: 손바닥이 카메라를 보게 해야 엄지와 검지 끝이 겹쳐 보이지 않는다.</li>
+  <li><b>안 될 때</b>: 중지·약지·새끼 중 하나라도 굽으면 OK 사인이 아니다. 세 손가락을 더 펴 본다.</li>
+</ul>
 
 <h2>판별 규칙</h2>
 <ul>
@@ -70,8 +79,23 @@ li{margin:3px 0}
 <h2>화면 표시</h2>
 <ul>
   <li><b>펜 커서</b>: 그리기는 채운 원, 커서 이동은 빈 원, 지우개는 점선 원.</li>
-  <li><b>손 뼈대</b>: 손이 보이는 동안 초록 선과 점 21개, 검지 끝은 주황색.</li>
-  <li><b>표시줄</b>: 맨 위에 판별한 동작 · 신뢰도 · 기능 · 지연(ms).</li>
+  <li><b>손 뼈대</b>: 손이 보이는 동안 초록 선과 점 21개, 검지 끝은 주황색. 떨림을 보정해 그린다.</li>
+  <li><b>표시줄</b>: 맨 위에 판별한 동작 · 신뢰도 · 기능 · 지연(ms) · 손 크기.</li>
+  <li><b>안내 문구</b>: 손 크기 0.25 초과 "조금 뒤로 가 주세요", 0.08 미만 "조금 가까이 와 주세요".</li>
+  <li><b>가장자리 안내</b>: 판별에 쓰는 점이 테두리 2% 안이면 "손을 화면 안쪽으로 옮겨 주세요", 손 뼈대는 흐리게.</li>
+</ul>
+
+<h2>잘 쓰는 법</h2>
+<ul>
+  <li><b>범위</b>: 휴대폰 카메라 미리보기의 네모 안에서 손가락을 움직인다. 네모가 그림판 전체다.</li>
+  <li><b>거리</b>: 손 전체(손목까지)가 카메라에 들어오게, 표시줄 손 크기가 0.08~0.25가 되게 둔다.</li>
+  <li><b>바꿀 때</b>: 손 모양을 바꾸면 약 0.3초 뒤에 바뀐다. 잠깐 멈췄다 움직이면 정확하다.</li>
+</ul>
+
+<h2>알려진 문제</h2>
+<ul>
+  <li><b>가장자리 잡선</b>: 검지로 그리다 손이 화면 가장자리에 걸리면 검지 끝이 튀며 선이 그려질 수 있다 (gesture 수정 예정).</li>
+  <li><b>실수로 전체 지우기</b>: 주먹을 1초 쥐면 바로 지워진다. 확인 단계가 없다.</li>
 </ul>
 
 <h2>바꾸는 곳</h2>
