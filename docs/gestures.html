@@ -38,7 +38,8 @@ li{margin:3px 0}
   <tr><td class="hand">✌️</td><td>검지 + 중지 펴기<br><code>two_fingers</code></td><td>지우개<br><code>erase</code></td><td>검지 끝이 지나간 자리를 지움 (30px)</td></tr>
   <tr><td class="hand">🖐️</td><td>손가락 4개 모두 펴기<br><code>open_palm</code></td><td>커서 이동<br><code>hover</code></td><td>그리지 않고 커서만 움직임</td></tr>
   <tr><td class="hand">✊</td><td>주먹<br><code>fist</code></td><td>펜 들기<br><code>up</code></td><td>선을 끊고 커서를 숨김 (손 뼈대는 보임)</td></tr>
-  <tr><td class="hand">✊⏱</td><td>주먹 1초 유지<br><code>fist_hold</code></td><td>전체 지우기<br><code>clear</code></td><td>캔버스를 비움 (한 번만)</td></tr>
+  <tr><td class="hand">✊⏱</td><td>주먹 1초 유지<br><code>fist_hold</code></td><td>전체 지우기<br><code>clear</code></td><td>캔버스를 비움 (한 번만, 주먹이 처음 보인 때부터 1초)</td></tr>
+  <tr><td class="hand">👌</td><td>엄지·검지 끝 맞대고 나머지 3개 펴기 (OK 사인)<br><code>pinch</code></td><td>다음 색<br><code>next_color</code></td><td>펜 색이 다음 색으로 (한 번만)</td></tr>
   <tr><td class="hand">∅</td><td>손이 안 보임<br><code>none</code></td><td>펜 들기<br><code>up</code></td><td>선을 끊고 커서·손 뼈대를 숨김</td></tr>
 </table></div>
 
@@ -47,7 +48,6 @@ li{margin:3px 0}
 <div class="tw"><table>
   <tr><th>기능</th><th>화면에서</th></tr>
   <tr><td class="off">실행 취소 <code>undo</code></td><td>마지막 획(지우개 획 포함) 취소</td></tr>
-  <tr><td class="off">다음 색 <code>next_color</code></td><td>검정 → 빨강 → 파랑 → 초록 → 주황 → 보라</td></tr>
   <tr><td class="off">굵게 / 가늘게 <code>size_up</code> <code>size_down</code></td><td>2 · 4 · 8 · 14 · 22px 중 한 단계</td></tr>
   <tr><td class="off">저장 <code>save</code></td><td>캔버스를 PNG로 내려받기</td></tr>
 </table></div>
@@ -55,11 +55,15 @@ li{margin:3px 0}
 
 <h2>판별 규칙</h2>
 <ul>
-  <li><b>엄지는 보지 않는다</b>: 검지·중지·약지·새끼 4개가 펴졌는지만 본다.</li>
+  <li><b>손가락 4개 + 엄지 끝</b>: 검지·중지·약지·새끼 4개가 펴졌는지 본다. 엄지는 펴짐을 보지 않고, OK 사인에서 검지 끝과 맞닿았는지만 본다 (손바닥 길이의 30% 안이면 맞닿음, 45%를 넘으면 떨어짐).</li>
   <li><b>4프레임 확인</b>: 같은 손 모양이 연속 4프레임(약 0.3초) 보여야 바뀐다.</li>
   <li><b>모르는 모양</b>: 표에 없는 모양(예: 중지만)은 직전 동작을 이어 간다.</li>
+  <li><b>가장자리</b>: 손목이나 손가락 마디·끝이 카메라 화면 테두리(2%)에 닿으면 손 모양을 판별하지 않고 직전 동작을 이어 간다. 커서는 계속 따라온다.</li>
+  <li><b>기준 두 개</b>: 접힌 손가락은 끝이 마디보다 손목에서 10% 이상 멀어져야 펴진 것으로, 펴진 손가락은 마디의 95% 안으로 들어와야 접힌 것으로 본다. 그 사이는 직전 상태를 유지한다.</li>
   <li><b>손이 잠깐 사라짐</b>: 3프레임까지는 기다리고, 그 뒤에 펜을 든다.</li>
-  <li><b>한 번만 실행</b>: 펜 들기·전체 지우기는 손 모양이 바뀔 때 한 번만 실행된다.</li>
+  <li><b>한 번만 실행</b>: 펜 들기·전체 지우기·다음 색은 손 모양이 바뀔 때 한 번만 실행된다.</li>
+  <li><b>획 시작</b>: 그리기·지우개는 손 모양을 확인하느라 기다린 프레임의 위치부터 선을 이어서, 획 앞부분이 잘리지 않는다.</li>
+  <li><b>떨림 보정</b>: 검지 끝 위치에 One Euro 필터를 쓴다. 손이 멈추면 떨림을 세게 줄이고, 빠르면 보정을 풀어 늦게 따라오지 않는다.</li>
   <li><b>그리는 영역</b>: 카메라 화면 가운데 70%가 캔버스 전체에 대응한다.</li>
 </ul>
 
