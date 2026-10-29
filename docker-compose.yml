@@ -2,7 +2,8 @@
 # 내 서비스만: docker compose up --build <서비스>   전체: docker compose up --build
 # 컨테이너끼리는 서비스 이름으로 부른다. 예: http://vision:8003  (localhost는 자기 자신)
 # 호스트 포트는 .env로 바꿀 수 있다 (.env.example 참고). .env가 없어도 기본값으로 뜬다.
-# 지금은 모두 /health만 답하는 뼈대다. security가 nginx(443)로 바뀌면 바깥에 여는 포트는 443만 남긴다 (docs/architecture.html).
+# 바깥(휴대폰·PC 브라우저)에 여는 포트는 security의 443과 80뿐이다. 8000~8004는 개발용으로 이 PC 안(127.0.0.1)에만 연다.
+# 같은 Wi-Fi의 다른 기기가 security를 거치지 않고 다른 서비스에 바로 들어오지 못하게 하려는 것이다 (docs/architecture.html).
 name: gesture-remote-drawing
 
 x-python-service: &python-service
@@ -21,7 +22,7 @@ services:
   web:
     <<: *python-service
     build: ./services/web
-    ports: ["${WEB_PORT:-8000}:8000"]
+    ports: ["127.0.0.1:${WEB_PORT:-8000}:8000"]
     environment:
       SERVICE_NAME: web
       PORT: "8000"
@@ -29,7 +30,12 @@ services:
   security:
     <<: *python-service
     build: ./services/security
-    ports: ["${SECURITY_PORT:-8001}:8001"]
+    ports:
+      - "${HTTPS_PORT:-443}:443"  # nginx: 휴대폰·PC 브라우저가 들어오는 곳
+      - "${HTTP_PORT:-80}:80"     # 443으로 넘긴다
+      - "127.0.0.1:${SECURITY_PORT:-8001}:8001"  # 세션 API (개발용)
+    volumes:
+      - ./services/security/certs:/etc/nginx/certs  # HTTPS 인증서. 없으면 시작할 때 자체 서명으로 만든다 (커밋하지 않음)
     environment:
       SERVICE_NAME: security
       PORT: "8001"
@@ -37,7 +43,7 @@ services:
   stream:
     <<: *python-service
     build: ./services/stream
-    ports: ["${STREAM_PORT:-8002}:8002"]
+    ports: ["127.0.0.1:${STREAM_PORT:-8002}:8002"]
     environment:
       SERVICE_NAME: stream
       PORT: "8002"
@@ -45,7 +51,7 @@ services:
   vision:
     <<: *python-service
     build: ./services/vision
-    ports: ["${VISION_PORT:-8003}:8003"]
+    ports: ["127.0.0.1:${VISION_PORT:-8003}:8003"]
     environment:
       SERVICE_NAME: vision
       PORT: "8003"
@@ -53,7 +59,7 @@ services:
   gesture:
     <<: *python-service
     build: ./services/gesture
-    ports: ["${GESTURE_PORT:-8004}:8004"]
+    ports: ["127.0.0.1:${GESTURE_PORT:-8004}:8004"]
     environment:
       SERVICE_NAME: gesture
       PORT: "8004"
