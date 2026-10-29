@@ -206,3 +206,45 @@ def test_header_wins_over_query_sid(make_client):
             ws.send_text(json.dumps({"frame_id": 0, "jpeg": B64}))
             ws.receive_json()
         assert fake.frames[0]["sid"] == SID
+
+
+def test_recent_window_stats(make_client):
+    """/sessions의 recent: 최근 10초 초당 처리 수, vision 응답 시간, 버린 비율."""
+    with make_client() as c:
+        fake = FakeServices()
+        use_fake(c, fake)
+        with phone(c) as ws:
+            ws.receive_json()
+            for i in range(4):
+                ws.send_text(json.dumps({"frame_id": i, "jpeg": B64}))
+                assert ws.receive_json()["dropped"] is False
+            ws.send_text("not json")  # 버린 프레임 1장
+            ws.receive_json()
+            recent = c.get("/sessions").json()[0]["recent"]
+        assert recent["fps"] == 0.4 and recent["drop_rate"] == 0.2
+        assert recent["vision_ms_avg"] is not None and recent["vision_ms_p95"] >= recent["vision_ms_avg"] * 0.5
+
+
+def test_prune_removes_only_old_disconnected_sessions(make_client):
+    with make_client() as c:
+        use_fake(c, FakeServices())
+        relay = c.app.state.relay
+        with phone(c, sid="gone") as ws:
+            ws.receive_json()
+        with phone(c, sid="still-here") as ws:
+            ws.receive_json()
+            assert relay.prune(ttl=0) == ["gone"]  # 연결 중인 세션은 지우지 않는다
+            assert set(relay.sessions) == {"still-here"}
+
+
+def test_shutdown_tells_web_phones_are_gone():
+    """stream이 꺼질 때 연결된 휴대폰을 끊김으로 알린다 (그림판이 '연결됨'으로 남지 않게)."""
+    from app.config import load_settings
+    from app.relay import Relay
+
+    fake = FakeServices()
+    relay = Relay(load_settings(), httpx.AsyncClient(transport=httpx.MockTransport(fake)))
+    relay.session("a").phone = object()
+    relay.session("b")  # 휴대폰 없음
+    asyncio.run(relay.notify_all_disconnected())
+    assert fake.events == [{"sid": "a", "event": "disconnected"}]

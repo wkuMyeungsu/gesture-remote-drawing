@@ -16,6 +16,7 @@ class Settings:
     max_fps: int
     max_frame_bytes: int
     dev_sid: str  # 개발용. 정하면 X-Session-Id 헤더가 없을 때 ?sid= 또는 이 값을 세션으로 쓴다 (security 없이 테스트)
+    session_ttl: float  # 휴대폰이 끊긴 세션을 이만큼(초) 지나면 지운다
 
 
 def _env(name: str, default: str) -> str:
@@ -34,4 +35,5 @@ def load_settings() -> Settings:
         max_fps=int(_env("STREAM_MAX_FPS", "15")),
         max_frame_bytes=int(_env("STREAM_MAX_FRAME_BYTES", str(512 * 1024))),
         dev_sid=os.getenv("STREAM_DEV_SID", "").strip(),
+        session_ttl=float(_env("STREAM_SESSION_TTL", "600")),
     )

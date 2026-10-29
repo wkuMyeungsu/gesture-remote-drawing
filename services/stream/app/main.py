@@ -12,6 +12,7 @@ import base64
 import binascii
 import json
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -35,8 +36,19 @@ async def lifespan(app: FastAPI):
     log.info("stream 시작: vision=%s, events=%s, 시간 제한 %dms%s", settings.vision_url or "(보내지 않음)",
              settings.events_url or "(알리지 않음)", settings.timeout_ms,
              f", 개발용 세션 허용({settings.dev_sid})" if settings.dev_sid else "")
+    cleaner = asyncio.create_task(_clean_sessions(app))
     yield
+    cleaner.cancel()
+    await app.state.relay.notify_all_disconnected()
     await app.state.client.aclose()
+
+
+async def _clean_sessions(app: FastAPI) -> None:
+    while True:
+        await asyncio.sleep(60)
+        removed = app.state.relay.prune(app.state.settings.session_ttl)
+        if removed:
+            log.info("끝난 세션 %d개 정리", len(removed))
 
 
 app = FastAPI(title="stream", version="0.1.0", lifespan=lifespan)
@@ -161,10 +173,12 @@ async def stream_socket(ws: WebSocket):
             frame_id, jpeg = _parse_frame(text, settings.max_frame_bytes)
             if jpeg is None:
                 session.dropped_invalid += 1
+                session.record(None)
                 await _ack(session, ws, frame_id, "invalid_frame")
                 continue
             if session.busy:  # vision 응답을 기다리는 중: 큐에 쌓지 않고 버린다
                 session.dropped_busy += 1
+                session.record(None)
                 await _ack(session, ws, frame_id, "busy")
                 continue
             session.busy = True
@@ -179,4 +193,5 @@ async def stream_socket(ws: WebSocket):
         if session.phone is ws:
             session.phone = None
             session.busy = False
+            session.last_active = time.monotonic()
             asyncio.create_task(relay.notify(sid, "disconnected"))

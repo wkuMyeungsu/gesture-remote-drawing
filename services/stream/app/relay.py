@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -21,6 +22,7 @@ from .config import Settings
 
 log = logging.getLogger("uvicorn.error")
 LOG_EVERY = 30.0  # 같은 오류는 이 간격으로만 로그를 남긴다
+WINDOW = 10.0  # 처리 현황(초당 처리 수, 지연)을 계산하는 최근 시간 (초)
 
 
 def now_ms() -> int:
@@ -33,6 +35,8 @@ class Session:
     phone: WebSocket | None = None
     busy: bool = False  # vision 응답을 기다리는 중 (구조도: "세션별 처리 중 여부")
     connected_at: float = field(default_factory=time.time)
+    last_active: float = field(default_factory=time.monotonic)
+    recent: deque = field(default_factory=deque)  # 최근 WINDOW초의 (시각, vision 응답 ms 또는 None=버림)
 
     received: int = 0
     forwarded: int = 0  # vision이 200으로 답한 수
@@ -42,11 +46,34 @@ class Session:
     last_vision_ms: float | None = None
     last_error: str | None = None
 
+    def record(self, vision_ms: float | None) -> None:
+        """프레임 하나의 결과를 기록한다. vision_ms가 None이면 버린 프레임."""
+        now = time.monotonic()
+        self.last_active = now
+        self.recent.append((now, vision_ms))
+        while self.recent and now - self.recent[0][0] > WINDOW:
+            self.recent.popleft()
+
+    def window(self) -> dict[str, Any]:
+        """최근 WINDOW초: 초당 처리 수, vision 응답 시간(평균·p95), 버린 비율."""
+        now = time.monotonic()
+        items = [ms for t, ms in self.recent if now - t <= WINDOW]
+        done = sorted(ms for ms in items if ms is not None)
+        p95 = done[min(len(done) - 1, int(len(done) * 0.95))] if done else None
+        return {
+            "seconds": WINDOW,
+            "fps": round(len(done) / WINDOW, 1),
+            "vision_ms_avg": round(sum(done) / len(done), 1) if done else None,
+            "vision_ms_p95": p95,
+            "drop_rate": round(1 - len(done) / len(items), 2) if items else None,
+        }
+
     def stats(self) -> dict[str, Any]:
         return {
             "sid": self.sid,
             "phone_connected": self.phone is not None,
             "busy": self.busy,
+            "recent": self.window(),
             "received": self.received,
             "forwarded": self.forwarded,
             "dropped_busy": self.dropped_busy,
@@ -88,10 +115,12 @@ class Relay:
         if r.status_code != 200:
             return self._fail(session, f"vision_{r.status_code}", f"vision 응답 {r.status_code}: {r.text[:120]}")
         session.forwarded += 1
+        session.record(session.last_vision_ms)
         return None
 
     def _fail(self, session: Session, reason: str, message: str) -> str:
         session.dropped_vision += 1
+        session.record(None)
         session.last_error = message
         self._log(session.sid, message)
         return reason
@@ -107,6 +136,20 @@ class Relay:
                 self._log(sid, f"web 알림({event}) 응답 {r.status_code}")
         except httpx.HTTPError as e:
             self._log(sid, f"web 알림({event}) 실패 ({type(e).__name__})")
+
+    def prune(self, ttl: float) -> list[str]:
+        """휴대폰이 끊긴 지 ttl초가 지난 세션을 지운다 (세션이 계속 쌓이지 않게)."""
+        now = time.monotonic()
+        old = [sid for sid, s in self.sessions.items() if s.phone is None and not s.busy and now - s.last_active > ttl]
+        for sid in old:
+            del self.sessions[sid]
+        return old
+
+    async def notify_all_disconnected(self) -> None:
+        """stream이 꺼질 때 연결된 휴대폰을 모두 끊김으로 알린다 (그림판이 '연결됨'으로 남지 않게)."""
+        sids = [s.sid for s in self.sessions.values() if s.phone is not None]
+        if sids:
+            await asyncio.gather(*(self.notify(sid, "disconnected") for sid in sids), return_exceptions=True)
 
     def _log(self, sid: str, message: str) -> None:
         now = time.monotonic()
