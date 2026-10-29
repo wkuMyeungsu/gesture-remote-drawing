@@ -177,19 +177,71 @@ function setGuide(state) {
 function hideHand() {
   handCanvas.hidden = true;
   handFilters = null;
+  fistSince = null;
   setGuide(null);
   $('dbg-hand').textContent = '-';
 }
 
-function drawHand(params, ts) {
+// 기능별 손 뼈대 색: 마지막으로 받은 action으로 정한다 (동작 이름은 gesture가 바꿀 수 있어 쓰지 않는다).
+// null은 지금 펜 색 (그리기: 무슨 색으로 그려질지, 다음 색: 바뀐 색을 손에서 바로 보여 준다)
+const MODE_COLORS = { draw: null, next_color: null, erase: '#868e96', hover: '#2f9e44', up: '#495057', clear: '#e03131' };
+const MODE_DEFAULT = '#2f9e44';
+// 손 아래에 같은 색으로 띄우는 기능 이름 (지금 어떤 기능이 발동 중인지 알려 준다)
+const MODE_LABELS = {
+  draw: '그리기', erase: '지우개', hover: '이동', up: '대기', next_color: '색 변경',
+  clear: '전체 지우기', undo: '실행 취소', size_up: '굵게', size_down: '가늘게', save: '저장',
+};
+let handMode = 'hover';
+
+function modeColor() {
+  const c = MODE_COLORS[handMode];
+  return c === undefined ? MODE_DEFAULT : c ?? COLORS[pen.color];
+}
+
+// 전체 지우기 카운트다운: 주먹을 쥐고 있는 동안 손바닥 가운데에 링을 채운다. 손을 펴면 취소된다.
+// gesture는 주먹이 처음 보인 때부터 fist_hold_ms(2초)를 세고, web은 동작이 확정된 뒤(약 0.2초 늦게) 주먹을 알게 되므로 그만큼 뺀다.
+// 주먹 여부는 landmarks의 동작 이름(fist)으로 본다. 이름이 바뀌면 링만 안 보이고 지우기는 그대로 동작한다.
+const CLEAR_HOLD_S = 1.8;
+const PALM = [0, 5, 9, 13, 17];  // 손바닥 가운데 = 손목과 손가락 뿌리의 평균
+let fistSince = null;            // web이 주먹을 처음 본 시각 (초)
+
+function drawLabel(text, x, y, color) {
+  hctx.font = '600 14px system-ui, "Malgun Gothic", sans-serif';
+  hctx.textAlign = 'center';
+  hctx.lineWidth = 4;
+  hctx.strokeStyle = 'rgba(255, 255, 255, .9)';
+  hctx.fillStyle = color;
+  hctx.strokeText(text, x, y);
+  hctx.fillText(text, x, y);
+}
+
+function drawClearRing([cx, cy], progress) {
+  const r = 34;
+  hctx.globalAlpha = 1;
+  hctx.lineWidth = 7;
+  hctx.strokeStyle = 'rgba(255, 255, 255, .85)';
+  hctx.beginPath();
+  hctx.arc(cx, cy, r, 0, Math.PI * 2);
+  hctx.stroke();
+  hctx.strokeStyle = '#e03131';
+  hctx.beginPath();
+  hctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+  hctx.stroke();
+  drawLabel('전체 지우기', cx, cy + r + 22, '#e03131');
+  drawLabel('손을 펴면 취소', cx, cy + r + 40, '#495057');
+}
+
+function drawHand(params, ts, gesture) {
   const raw = params?.points ?? [];
   clearTimeout(handTimer);
   if (raw.length < 21) { hideHand(); return; }
   handTimer = setTimeout(hideHand, 1000);  // 메시지가 끊기면 지운다
   handCanvas.hidden = false;
   // 시간은 stream이 프레임을 받은 시각(ts)을 쓴다. 네트워크 도착 간격이 흔들려도 보정이 일정하다
-  const points = smoothHand(raw, (ts ?? Date.now()) / 1000);
+  const t = (ts ?? Date.now()) / 1000;
+  const points = smoothHand(raw, t);
   handGuide(raw, points);
+  if (gesture === 'fist') fistSince ??= t; else fistSince = null;
 
   const w = handCanvas.clientWidth, h = handCanvas.clientHeight;
   const dpr = window.devicePixelRatio || 1;
@@ -202,8 +254,9 @@ function drawHand(params, ts) {
 
   const [lo, hi] = params.zone ?? [0, 1];
   const px = ([x, y]) => [(x - lo) / (hi - lo) * w, (y - lo) / (hi - lo) * h];
-  hctx.globalAlpha = guide.state === 'edge' ? 0.35 : 1;  // 가장자리에 걸린 손은 판별하지 않고 점도 찌그러지므로 흐리게
-  hctx.strokeStyle = 'rgba(47, 158, 68, .55)';
+  const dim = guide.state === 'edge' ? 0.35 : 1;  // 가장자리에 걸린 손은 판별하지 않고 점도 찌그러지므로 흐리게
+  hctx.globalAlpha = 0.65 * dim;
+  hctx.strokeStyle = modeColor();
   hctx.lineWidth = 2.5;
   hctx.lineCap = 'round';
   hctx.beginPath();
@@ -212,6 +265,7 @@ function drawHand(params, ts) {
     hctx.lineTo(...px(points[b]));
   }
   hctx.stroke();
+  hctx.globalAlpha = dim;
   points.forEach((p, i) => {
     const [x, y] = px(p);
     hctx.fillStyle = i === HAND_TIP ? '#f76707' : 'rgba(33, 37, 41, .6)';
@@ -219,6 +273,16 @@ function drawHand(params, ts) {
     hctx.arc(x, y, i === HAND_TIP ? 5 : 3, 0, Math.PI * 2);
     hctx.fill();
   });
+
+  const palm = PALM.map((i) => px(points[i]));
+  const center = [0, 1].map((k) => palm.reduce((s, p) => s + p[k], 0) / palm.length);
+  if (fistSince !== null && handMode !== 'clear') {
+    drawClearRing(center, Math.min((t - fistSince) / CLEAR_HOLD_S, 1));
+  } else if (MODE_LABELS[handMode]) {
+    const [wx, wy] = px(points[0]);  // 손목 아래에 기능 이름
+    drawLabel(MODE_LABELS[handMode], wx, wy + 24, modeColor());
+  }
+  hctx.globalAlpha = 1;
 }
 
 // ---------------------------------------------------------------- 기능(action) 실행
@@ -237,7 +301,8 @@ const ACTIONS = {
 };
 
 function onAction(m) {
-  if (m.action === 'landmarks') { drawHand(m.params, m.ts); return; }
+  if (m.action === 'landmarks') { drawHand(m.params, m.ts, m.gesture); return; }
+  if (ACTIONS[m.action]) handMode = m.action;
   $('dbg-gesture').textContent = m.gesture ?? '-';
   $('dbg-conf').textContent = m.confidence != null ? m.confidence.toFixed(2) : '-';
   $('dbg-action').textContent = m.action;
