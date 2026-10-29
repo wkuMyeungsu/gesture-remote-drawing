@@ -5,22 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>손동작 기능표</title>
 <style>
-:root{--bg:#eceff1;--paper:#fff;--ink:#111;--muted:#555;--rule:#111;--thin:#b8bec4;--code:#f3f4f5;--off:#9aa0a6}
+:root{--bg:#eceff1;--paper:#fff;--ink:#111;--muted:#555;--rule:#111;--code:#f3f4f5}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.7 system-ui,"Malgun Gothic",sans-serif}
-.doc{max-width:860px;margin:24px auto;background:var(--paper);border:2px solid var(--rule);padding:0 22px 28px}
-@media (max-width:640px){.doc{margin:0;border-width:0 0 2px;padding:0 16px 24px}}
-code{font-family:ui-monospace,Consolas,monospace;font-size:.9em;background:var(--code);padding:1px 5px;border:1px solid var(--thin)}
+.doc{max-width:860px;margin:24px auto;background:var(--paper);border:2px solid var(--rule);padding:0 22px 26px}
+@media (max-width:640px){.doc{margin:0;border-width:0 0 2px;padding:0 16px 20px}}
+code{font-family:ui-monospace,Consolas,monospace;font-size:.85em;color:var(--muted)}
 h1{margin:0;padding:18px 0 4px;font-size:26px}
 .sub{color:var(--muted);margin:0 0 8px}
 h2{margin:26px 0 10px;padding:6px 10px;background:var(--ink);color:var(--paper);font-size:16px}
 .tw{overflow-x:auto;margin:8px 0}
 table{border-collapse:collapse;width:100%;font-size:14px}
-th,td{border:1px solid var(--rule);padding:6px 9px;text-align:left;vertical-align:middle}
+th,td{border:1px solid var(--rule);padding:7px 10px;text-align:left;vertical-align:middle}
 th{background:var(--code);font-weight:600;white-space:nowrap}
-.hand{font-size:26px;text-align:center;width:52px}
-.off{color:var(--off)}
-ul{padding-left:22px}
+.hand{font-size:28px;text-align:center;width:56px}
+.dot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+ul{padding-left:22px;margin:6px 0}
 li{margin:3px 0}
 </style>
 </head>
@@ -28,96 +28,44 @@ li{margin:3px 0}
 <div class="doc">
 
 <h1>손동작 기능표</h1>
-<p class="sub">휴대폰 카메라에 보이는 손 모양 → PC 그림판에서 실행되는 기능<br>
-기준 2026-10-29 · <code>services/gesture/mapping.json</code> · <code>services/web/static/board.js</code></p>
+<p class="sub">휴대폰 카메라에 손을 보여 PC 그림판을 다룬다 · 기준 <code>services/gesture/mapping.json</code></p>
 
-<h2>손 모양 → 기능</h2>
+<h2>손동작</h2>
 <div class="tw"><table>
-  <tr><th></th><th>손 모양</th><th>기능</th><th>화면에서</th></tr>
-  <tr><td class="hand">☝️</td><td>검지만 펴기<br><code>index_up</code></td><td>그리기<br><code>draw</code></td><td>검지 끝을 따라 선이 그려짐</td></tr>
-  <tr><td class="hand">✌️</td><td>검지 + 중지 펴기<br><code>two_fingers</code></td><td>지우개<br><code>erase</code></td><td>검지 끝이 지나간 자리를 지움 (30px)</td></tr>
-  <tr><td class="hand">🖐️</td><td>손가락 4개 모두 펴기<br><code>open_palm</code></td><td>커서 이동<br><code>hover</code></td><td>그리지 않고 커서만 움직임</td></tr>
-  <tr><td class="hand">✊</td><td>주먹<br><code>fist</code></td><td>펜 들기<br><code>up</code></td><td>선을 끊고 커서를 숨김 (손 뼈대는 보임)<br>손바닥에 빨간 링이 차고, 다 차면 전체 지우기. 손을 펴면 취소</td></tr>
-  <tr><td class="hand">✊⏱</td><td>주먹 2초 유지<br><code>fist_hold</code></td><td>전체 지우기<br><code>clear</code></td><td>캔버스를 비움 (한 번만, 주먹이 처음 보인 때부터 2초)</td></tr>
-  <tr><td class="hand">👌</td><td>엄지·검지 끝 맞대고 나머지 3개 펴기 (OK 사인)<br><code>pinch</code></td><td>다음 색<br><code>next_color</code></td><td>펜 색이 다음 색으로 (한 번만)<br>또 바꾸려면 손을 폈다가 다시 👌</td></tr>
-  <tr><td class="hand">∅</td><td>손이 안 보임<br><code>none</code></td><td>펜 들기<br><code>up</code></td><td>선을 끊고 커서·손 뼈대를 숨김</td></tr>
+  <tr><th></th><th>하는 법</th><th>기능</th><th>그림판 손 표시</th></tr>
+  <tr><td class="hand">☝️</td><td>검지만 편다</td><td><b>그리기</b><br>검지 끝을 따라 선이 그려진다</td><td>지금 펜 색 · "그리기"</td></tr>
+  <tr><td class="hand">✌️</td><td>검지와 중지를 편다</td><td><b>지우개</b><br>검지 끝이 지나간 자리를 지운다 (30px)</td><td><i class="dot" style="background:#868e96"></i>회색 · "지우개"</td></tr>
+  <tr><td class="hand">🖐️</td><td>손가락 넷을 모두 편다</td><td><b>이동</b><br>그리지 않고 커서만 움직인다</td><td><i class="dot" style="background:#2f9e44"></i>초록 · "이동"</td></tr>
+  <tr><td class="hand">👌</td><td>엄지와 검지 끝을 붙이고<br>중지·약지·새끼는 편다</td><td><b>색 바꾸기</b><br>펜 색이 다음 색으로 한 번 바뀐다</td><td>바뀐 펜 색 · "색 변경"</td></tr>
+  <tr><td class="hand">✊</td><td>주먹을 쥐고 2초 유지한다</td><td><b>전체 지우기</b><br>2초가 차면 그림을 모두 지운다</td><td><i class="dot" style="background:#e03131"></i>빨강 깜빡임 + 손바닥 링<br>지운 뒤 초록 · "지웠어요"</td></tr>
 </table></div>
+<p>펜 색 순서: 검정 → 빨강 → 파랑 → 초록 → 주황 → 보라</p>
 
-<h2>손 모양 없이 남아 있는 기능</h2>
-<p>web에는 구현돼 있지만 아직 짝지은 손 모양이 없어 손으로는 실행할 수 없다. 그림판 왼쪽 위 도구 막대(마우스)와 단축키(Ctrl+Z / Ctrl+Y)로는 쓸 수 있다.</p>
-<div class="tw"><table>
-  <tr><th>기능</th><th>화면에서</th></tr>
-  <tr><td class="off">실행 취소 <code>undo</code></td><td>마지막 작업 취소 (획 하나 또는 전체 지우기)</td></tr>
-  <tr><td class="off">다시 실행 <code>redo</code></td><td>실행 취소한 작업 다시 실행</td></tr>
-  <tr><td class="off">굵게 / 가늘게 <code>size_up</code> <code>size_down</code></td><td>2 · 4 · 8 · 14 · 22px 중 한 단계</td></tr>
-  <tr><td class="off">저장 <code>save</code></td><td>캔버스를 PNG로 내려받기</td></tr>
-</table></div>
-<p>짝을 추가하려면 gesture가 새 손 모양을 판별하고 <code>mapping.json</code>에 한 줄 넣는다 (web 수정 없음).</p>
-
-<h2>👌 핀치 하는 법</h2>
+<h2>요령</h2>
 <ul>
-  <li><b>모양</b>: 엄지 끝과 검지 끝을 붙이고, 중지·약지·새끼는 쭉 편다 (OK 사인).</li>
-  <li><b>맞닿음 기준</b>: 엄지–검지 끝 거리가 손바닥 길이의 30% 안. 붙였다 뗄 때는 45%를 넘어야 떨어진 것으로 본다.</li>
-  <li><b>유지</b>: 약 0.3초(4프레임) 그대로 두면 색이 한 번 바뀐다.</li>
-  <li><b>방향</b>: 손바닥이 카메라를 보게 해야 엄지와 검지 끝이 겹쳐 보이지 않는다.</li>
-  <li><b>안 될 때</b>: 중지·약지·새끼 중 하나라도 굽으면 OK 사인이 아니다. 세 손가락을 더 펴 본다.</li>
+  <li><b>☝️ 그리기 ↔ ✌️ 지우개</b>: 손 모양만 바꾸면 선이 끊기고 새로 시작한다. 손을 뗄 필요가 없다.</li>
+  <li><b>👌 색 바꾸기</b>: 손바닥이 카메라를 보게 해야 엄지·검지 끝이 잘 보인다. 또 바꾸려면 손을 폈다가 다시 👌.</li>
+  <li><b>✊ 전체 지우기</b>: 링이 다 차기 전에 손을 펴면 취소된다. 실수로 지웠으면 PC에서 Ctrl+Z로 되살린다.</li>
+  <li><b>펜 들기</b>: 따로 동작이 없다. 🖐️로 바꾸거나 손을 화면에서 빼면 선이 끊긴다.</li>
 </ul>
 
-<h2>판별 규칙</h2>
+<h2>인식 규칙</h2>
 <ul>
-  <li><b>손가락 4개 + 엄지 끝</b>: 검지·중지·약지·새끼 4개가 펴졌는지 본다. 엄지는 펴짐을 보지 않고, OK 사인에서 검지 끝과 맞닿았는지만 본다 (손바닥 길이의 30% 안이면 맞닿음, 45%를 넘으면 떨어짐).</li>
-  <li><b>4프레임 확인</b>: 같은 손 모양이 연속 4프레임(약 0.3초) 보여야 바뀐다.</li>
+  <li><b>0.3초 확인</b>: 같은 손 모양이 약 0.3초(4프레임) 이어져야 바뀐다.</li>
   <li><b>모르는 모양</b>: 표에 없는 모양(예: 중지만)은 직전 동작을 이어 간다.</li>
-  <li><b>가장자리</b>: 손목이나 손가락 마디·끝이 카메라 화면 테두리(2%)에 닿으면 손 모양을 판별하지 않고 직전 동작을 이어 간다. 커서는 계속 따라온다.</li>
-  <li><b>기준 두 개</b>: 접힌 손가락은 끝이 마디보다 손목에서 10% 이상 멀어져야 펴진 것으로, 펴진 손가락은 마디의 95% 안으로 들어와야 접힌 것으로 본다. 그 사이는 직전 상태를 유지한다.</li>
-  <li><b>손이 잠깐 사라짐</b>: 3프레임까지는 기다리고, 그 뒤에 펜을 든다.</li>
-  <li><b>한 번만 실행</b>: 펜 들기·전체 지우기·다음 색은 손 모양이 바뀔 때 한 번만 실행된다.</li>
-  <li><b>획 시작</b>: 그리기·지우개는 손 모양을 확인하느라 기다린 프레임의 위치부터 선을 이어서, 획 앞부분이 잘리지 않는다.</li>
-  <li><b>떨림 보정</b>: 검지 끝 위치에 One Euro 필터를 쓴다. 손이 멈추면 떨림을 세게 줄이고, 빠르면 보정을 풀어 늦게 따라오지 않는다.</li>
-  <li><b>그리는 영역</b>: 카메라 화면 가운데 70%가 캔버스 전체에 대응한다.</li>
+  <li><b>가장자리</b>: 손이 카메라 화면 테두리에 걸리면 손 모양을 판별하지 않고 직전 동작을 이어 간다.</li>
+  <li><b>손이 사라짐</b>: 잠깐(3프레임) 안 보이는 건 기다리고, 그 뒤에 선을 끊는다.</li>
+  <li><b>그리는 범위</b>: 휴대폰 미리보기의 네모 안이 그림판 전체다.</li>
 </ul>
 
-<h2>화면 표시</h2>
-<ul>
-  <li><b>펜 커서</b>: 그리기는 채운 원, 커서 이동은 빈 원, 지우개는 점선 원.</li>
-  <li><b>손 뼈대</b>: 손이 보이는 동안 초록 선과 점 21개, 검지 끝은 주황색. 떨림을 보정해 그린다.</li>
-  <li><b>표시줄</b>: 맨 위에 판별한 동작 · 신뢰도 · 기능 · 지연(ms) · 손 크기.</li>
-  <li><b>안내 문구</b>: 손 크기 0.25 초과 "조금 뒤로 가 주세요", 0.08 미만 "조금 가까이 와 주세요".</li>
-  <li><b>가장자리 안내</b>: 판별에 쓰는 점이 테두리 2% 안이면 "손을 화면 안쪽으로 옮겨 주세요", 손 뼈대는 흐리게.</li>
-  <li><b>전체 지우기 카운트다운</b>: 주먹인 동안 손 뼈대가 빨갛게 깜빡이고, 손바닥 가운데에 빨간 링이 차며 "전체 지우기 · 손을 펴면 취소"가 뜬다. 지운 뒤에는 원래 색으로 돌아온다.</li>
-</ul>
-
-<h2>발동 중인 기능 표시</h2>
-<p>손 뼈대 색과 손목 아래 글자로 지금 발동 중인 기능을 알려 준다.</p>
+<h2>잘 안 될 때</h2>
 <div class="tw"><table>
-  <tr><th>손 모양</th><th>기능</th><th>뼈대·글자 색</th><th>글자</th></tr>
-  <tr><td>☝️</td><td><code>draw</code></td><td>지금 펜 색</td><td>그리기</td></tr>
-  <tr><td>✌️</td><td><code>erase</code></td><td>회색</td><td>지우개</td></tr>
-  <tr><td>🖐️</td><td><code>hover</code></td><td>초록</td><td>이동</td></tr>
-  <tr><td>👌</td><td><code>next_color</code></td><td>바뀐 펜 색</td><td>색 변경</td></tr>
-  <tr><td>✊</td><td><code>up</code></td><td>빨강, 깜빡임 (펜 색이 빨강이어도 구분)</td><td>(카운트다운 링)</td></tr>
-  <tr><td>✊⏱</td><td><code>clear</code></td><td>초록 (지운 뒤 원래 색)</td><td>지웠어요</td></tr>
-</table></div>
-<p>색은 마지막으로 받은 기능으로 정한다. 손 모양과 기능의 짝이 바뀌어도 기능 기준이라 그대로 맞는다.</p>
-
-<h2>잘 쓰는 법</h2>
-<ul>
-  <li><b>범위</b>: 휴대폰 카메라 미리보기의 네모 안에서 손가락을 움직인다. 네모가 그림판 전체다.</li>
-  <li><b>거리</b>: 손 전체(손목까지)가 카메라에 들어오게, 표시줄 손 크기가 0.08~0.25가 되게 둔다.</li>
-  <li><b>바꿀 때</b>: 손 모양을 바꾸면 약 0.3초 뒤에 바뀐다. 잠깐 멈췄다 움직이면 정확하다.</li>
-</ul>
-
-<h2>알려진 문제</h2>
-<ul>
-  <li><b>가장자리 잡선</b>: 검지로 그리다 손이 화면 가장자리에 걸리면 검지 끝이 튀며 선이 그려질 수 있다 (gesture 수정 예정).</li>
-</ul>
-
-<h2>바꾸는 곳</h2>
-<div class="tw"><table>
-  <tr><th>하고 싶은 일</th><th>고치는 곳</th><th>담당</th></tr>
-  <tr><td>손 모양과 기능의 짝 바꾸기</td><td><code>services/gesture/mapping.json</code></td><td>gesture</td></tr>
-  <tr><td>새 손 모양 추가</td><td><code>services/gesture/logic.py</code> + <code>mapping.json</code></td><td>gesture</td></tr>
-  <tr><td>새 기능 추가</td><td><code>docs/contracts/README.md</code>의 <code>action</code> 표 → web 구현 → <code>mapping.json</code></td><td>gesture · web</td></tr>
+  <tr><th>그림판 표시 · 증상</th><th>해결</th></tr>
+  <tr><td>"조금 뒤로 가 주세요"</td><td>휴대폰에서 손을 조금 멀리. 손목까지 화면에 들어오게</td></tr>
+  <tr><td>"조금 가까이 와 주세요"</td><td>손을 조금 가까이. 너무 작으면 손가락을 잘못 본다</td></tr>
+  <tr><td>"손을 화면 안쪽으로 옮겨 주세요"</td><td>손이 테두리에 걸렸다. 미리보기 네모 안으로</td></tr>
+  <tr><td>👌가 안 된다</td><td>중지·약지·새끼를 더 펴고, 엄지와 검지 끝을 확실히 붙인다</td></tr>
+  <tr><td>손 모양이 늦게 바뀐다</td><td>바꾼 뒤 잠깐 멈춘다 (0.3초 확인)</td></tr>
 </table></div>
 
 </div>
