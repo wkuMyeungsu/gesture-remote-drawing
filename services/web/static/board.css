@@ -46,6 +46,38 @@ button {
   color: #fff; font-size: 16px; font-weight: 600; white-space: nowrap;
 }
 
+/* 마우스 그리기 도구: 평소에는 동그란 버튼, 펼치면 세로 도구 막대 */
+.tools { position: absolute; left: 12px; top: 12px; z-index: 3; }
+.tools.collapsed .tool-panel, .tools:not(.collapsed) .tool-fab { display: none; }
+.tool-fab {
+  display: grid; place-items: center; width: 52px; height: 52px; padding: 0;
+  border: 2px solid #495057; border-radius: 50%; background: #1f2326; color: #51cf66;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .3);
+}
+.tool-panel {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 6px;
+  border-radius: 12px; background: #1f2326; box-shadow: 0 2px 8px rgba(0, 0, 0, .35);
+}
+.tool-panel button {
+  display: grid; place-items: center; width: 40px; height: 40px; padding: 0;
+  border: 0; border-radius: 8px; background: transparent; color: #f1f3f5;
+}
+.tool-panel button:hover { background: #343a40; }
+.tool-panel button.active { background: #228be6; }
+.tool-panel button.close { background: #e03131; }
+.tool-panel button.close:hover { background: #c92a2a; }
+.tool-panel svg, .tool-fab svg {
+  width: 22px; height: 22px; fill: none; stroke: currentColor;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+.tool-dot { width: 18px; height: 18px; border: 2px solid #f1f3f5; border-radius: 50%; }
+.tool-panel hr { width: 28px; margin: 4px 0; border: 0; border-top: 1px solid #495057; }
+.tool-hand { display: none; color: #ffd43b; font-size: 11px; line-height: 1.2; text-align: center; }
+#stage.hand-on .tool-hand { display: block; }
+#stage.hand-on .tool-panel [data-tool] { opacity: .45; }
+#stage.mouse-on #board { cursor: crosshair; touch-action: none; }
+#stage.mouse-on.hand-on #board { cursor: not-allowed; }
+
 .pair {
   position: fixed; inset: 0; display: grid; place-items: center;
   background: rgba(33, 37, 41, .6);

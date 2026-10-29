@@ -14,8 +14,9 @@ const cursor = $('cursor');
 // ---------------------------------------------------------------- 그림 상태
 // 좌표는 0~1로 저장하고 그릴 때 캔버스 크기에 맞춘다 (창 크기가 바뀌어도 그대로).
 const pen = { color: 0, size: 1 };
-let strokes = [];     // { color, size, erase, points: [[x, y], ...] }
-let current = null;   // 펜이 내려가 있으면 그리는 중인 획
+let strokes = [];       // { color, size, erase, points: [[x, y], ...] } 손·마우스 획을 함께 둔다
+let current = null;     // 손 펜이 내려가 있으면 그리는 중인 획
+let mouseStroke = null; // 마우스로 그리는 중인 획
 
 function toPx(x, y) {
   return [x * canvas.clientWidth, y * canvas.clientHeight];
@@ -53,21 +54,29 @@ function resize() {
 }
 new ResizeObserver(resize).observe(stage);
 
-function penDown(x, y, erase = false) {
-  if (current && current.erase !== erase) current = null;  // 펜 ↔ 지우개가 바뀌면 새 획
-  if (!current) {
-    const style = erase ? ERASER : { color: COLORS[pen.color], size: SIZES[pen.size] };
-    current = { ...style, erase, points: [[x, y]] };
-    strokes.push(current);
-    drawStroke(current);
-  } else {
-    current.points.push([x, y]);
-    drawStroke(current, current.points.length - 1);
-  }
+function newStroke(x, y, erase) {
+  const style = erase ? ERASER : { color: COLORS[pen.color], size: SIZES[pen.size] };
+  const s = { ...style, erase, points: [[x, y]] };
+  strokes.push(s);
+  drawStroke(s);
+  return s;
 }
 
+function extendStroke(s, x, y) {
+  s.points.push([x, y]);
+  drawStroke(s, s.points.length - 1);
+}
+
+function penDown(x, y, erase = false) {
+  if (current && current.erase !== erase) current = null;  // 펜 ↔ 지우개가 바뀌면 새 획
+  if (!current) current = newStroke(x, y, erase);
+  else extendStroke(current, x, y);
+}
+
+// 손·마우스 획을 모두 끝낸다 (전체 지우기·실행 취소 뒤에 지워진 획에 이어 그리지 않게)
 function penUp() {
   current = null;
+  mouseStroke = null;
 }
 
 function showCursor(x, y, drawing, erasing = false) {
@@ -86,6 +95,7 @@ function showCursor(x, y, drawing, erasing = false) {
 function updateToolbar() {
   $('pen-color').style.background = COLORS[pen.color];
   $('pen-size').textContent = SIZES[pen.size];
+  $('tool-color-dot').style.background = COLORS[pen.color];
 }
 
 function savePng() {
@@ -301,6 +311,7 @@ const ACTIONS = {
 };
 
 function onAction(m) {
+  markHand();
   if (m.action === 'landmarks') { drawHand(m.params, m.ts, m.gesture); return; }
   if (ACTIONS[m.action]) handMode = m.action;
   $('dbg-gesture').textContent = m.gesture ?? '-';
@@ -322,6 +333,71 @@ function onEvent(m) {
     hideHand();
   }
 }
+
+// ---------------------------------------------------------------- 마우스 그리기 도구
+// 평소에는 동그란 버튼, 누르면 도구가 펼쳐져 마우스로 그린다. 획은 손과 같은 strokes에 넣으므로
+// 실행 취소·지우개·전체 지우기·색이 손·마우스 획에 똑같이 적용된다.
+// 손이 인식되는 동안은 손이 우선이다: 마우스 입력을 받지 않고, 그리던 마우스 획은 끝낸다.
+const HAND_PRIORITY_MS = 800;  // 마지막 손 메시지 뒤 이만큼은 손이 쓰는 중으로 본다
+const tools = $('tools');
+let tool = 'pen';              // 'pen' | 'eraser'
+let handUntil = 0;
+let handOffTimer = null;
+
+const handActive = () => performance.now() < handUntil;
+const mouseOn = () => !tools.classList.contains('collapsed');
+
+function markHand() {
+  handUntil = performance.now() + HAND_PRIORITY_MS;
+  mouseStroke = null;
+  stage.classList.add('hand-on');
+  clearTimeout(handOffTimer);
+  handOffTimer = setTimeout(() => stage.classList.remove('hand-on'), HAND_PRIORITY_MS);
+}
+
+function eventXY(e) {
+  const r = canvas.getBoundingClientRect();
+  const clamp = (v) => Math.min(Math.max(v, 0), 1);
+  return [clamp((e.clientX - r.left) / r.width), clamp((e.clientY - r.top) / r.height)];
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (!mouseOn() || handActive() || e.button !== 0) return;
+  canvas.setPointerCapture(e.pointerId);
+  mouseStroke = newStroke(...eventXY(e), tool === 'eraser');
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  if (!mouseOn() || handActive()) return;
+  const [x, y] = eventXY(e);
+  showCursor(x, y, !!mouseStroke && tool === 'pen', tool === 'eraser');
+  if (!mouseStroke) return;
+  // 빠르게 움직일 때 브라우저가 묶어 둔 중간 점까지 이어 그린다
+  for (const c of e.getCoalescedEvents?.() ?? [e]) extendStroke(mouseStroke, ...eventXY(c));
+});
+
+for (const type of ['pointerup', 'pointercancel']) canvas.addEventListener(type, () => { mouseStroke = null; });
+canvas.addEventListener('pointerleave', () => { if (mouseOn() && !handActive()) cursor.hidden = true; });
+
+function setTool(t) {
+  tool = t;
+  tools.querySelectorAll('[data-tool]').forEach((b) => b.classList.toggle('active', b.dataset.tool === t));
+}
+
+function setMouse(on) {
+  tools.classList.toggle('collapsed', !on);
+  stage.classList.toggle('mouse-on', on);
+  mouseStroke = null;
+  if (!on && !handActive()) cursor.hidden = true;
+}
+
+$('tool-open').onclick = () => setMouse(true);
+$('tool-close').onclick = () => setMouse(false);
+tools.querySelectorAll('[data-tool]').forEach((b) => { b.onclick = () => setTool(b.dataset.tool); });
+$('tool-color').onclick = () => ACTIONS.next_color();
+$('tool-undo').onclick = () => ACTIONS.undo();
+$('tool-clear').onclick = () => { if (confirm('그림을 모두 지울까요?')) ACTIONS.clear(); };
+$('tool-save').onclick = () => ACTIONS.save();
 
 // ---------------------------------------------------------------- 세션 · WebSocket
 let sid = null;
