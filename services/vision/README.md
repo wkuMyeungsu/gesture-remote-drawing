@@ -12,7 +12,7 @@ stream ──④ POST /frames (JPEG, X-Session-Id·X-Frame-Id·X-Ts)──▶ vi
 
 1. `POST /frames`로 JPEG 한 장과 헤더 3개(`X-Session-Id`, `X-Frame-Id`, `X-Ts`)를 받는다.
 2. 전처리: JPEG 디코딩 → 긴 변이 `VISION_MAX_SIDE`보다 크면 축소 → **좌우 반전** → BGR→RGB.
-3. MediaPipe Hands로 손을 찾고, `score`가 가장 높은 손 하나의 좌표 21개를 고른다.
+3. MediaPipe Hands로 손을 찾아 손 하나의 좌표 21개를 고른다. 세션(휴대폰)마다 앞 프레임의 손을 이어서 추적하고, 손이 여럿이면 앞 프레임 손에 가장 가까운 손을 고른다 (처음에는 `score`가 가장 높은 손).
 4. gesture `POST /landmarks`로 보낸 뒤 stream에 `{"ok": true}`로 답한다 (stream은 이 응답을 받아야 다음 프레임을 보낸다).
 
 보내는 형식 (⑤):
@@ -29,8 +29,8 @@ stream ──④ POST /frames (JPEG, X-Session-Id·X-Frame-Id·X-Ts)──▶ vi
 ### 처리 규칙
 
 - **좌우 반전은 vision에서 한 번만**: 휴대폰은 뒤집지 않은 프레임을 보낸다. gesture는 `GESTURE_MIRROR=0`(기본)으로 두면 된다.
-- **상태 없음**: 프레임마다 독립으로 손을 찾는다 (`static_image_mode`). 세션을 기억하지 않으므로 vision을 여러 개로 늘릴 수 있다. 좌표 흔들림 보정은 gesture가 한다.
-- **한 번에 한 프레임**: MediaPipe는 동시에 부를 수 없어 잠금으로 순서대로 처리한다. 320×240 한 장에 약 20~30ms (lite 모델, CPU).
+- **세션마다 추적**: 세션마다 MediaPipe Hands를 하나씩 두고 추적 모드(`static_image_mode=False`)로 돌린다. 프레임마다 처음부터 찾으면(정지 이미지 모드) 점이 프레임마다 흔들리고, 두 손·오검출 사이를 오가며 좌표가 튄다. 추적이 끊기면 그 프레임에서 다시 찾는다. `VISION_SESSION_IDLE_S` 동안 프레임이 없는 세션은 정리하고, 최대 `VISION_MAX_SESSIONS`개까지 둔다. vision을 여러 개로 늘리려면 같은 세션은 같은 vision으로 보내야 한다. 남은 작은 떨림 보정은 gesture가 한다.
+- **한 번에 한 프레임**: MediaPipe 그래프는 동시에 부를 수 없어 세션별 잠금으로 순서대로 처리한다. 320×240 한 장에 약 20~30ms (lite 모델, CPU).
 - **응답 코드**: 성공 `200 {"ok": true}`. 헤더·JPEG가 틀리면 `400`. gesture가 실패·시간 초과(200ms)면 `502` → stream 쪽에는 `vision_502`로 보인다.
 
 ## 실행
@@ -41,7 +41,7 @@ docker compose up --build vision
 
 ### 사진 한 장으로 확인 (stream·gesture 없이)
 
-`POST /detect`는 gesture로 보내지 않고 손 좌표를 바로 돌려준다.
+`POST /detect`는 gesture로 보내지 않고 손 좌표를 바로 돌려준다. 사진 한 장이므로 추적 없이 찾는다.
 
 ```bash
 curl -X POST http://localhost:8003/detect -H "Content-Type: image/jpeg" --data-binary @손사진.jpg
@@ -73,7 +73,11 @@ docker compose run --rm --no-deps vision pytest -q
 | `VISION_MAX_FRAME_BYTES` | `1048576` | 받는 JPEG 최대 크기 |
 | `VISION_MODEL_COMPLEXITY` | `0` | `0` lite(빠름), `1` full(조금 더 정확, 약 1.3배 느림) |
 | `VISION_MIN_DETECTION` | `0.5` | 손으로 인정할 최소 신뢰도 |
-| `VISION_MAX_HANDS` | `2` | 찾을 손 개수 (보내는 건 가장 확실한 하나) |
+| `VISION_MAX_HANDS` | `1` | 찾을 손 개수 (보내는 건 하나). 2 이상이면 손이 모자랄 때마다 손바닥 검출을 다시 돌려 느려지고 오검출이 늘어난다 |
+| `VISION_TRACKING` | `1` | 세션마다 앞 프레임의 손을 이어서 추적. `0`이면 프레임마다 처음부터 찾는다 (예전 방식) |
+| `VISION_MIN_TRACKING` | `0.5` | 추적을 이어 갈 최소 신뢰도. 낮추면 덜 끊기고, 높이면 빠른 손에서 더 자주 다시 찾는다 |
+| `VISION_MAX_SESSIONS` | `4` | 동시에 추적할 세션 수 (세션마다 MediaPipe 그래프 하나) |
+| `VISION_SESSION_IDLE_S` | `30` | 이 시간(초) 동안 프레임이 없는 세션의 추적기는 정리 |
 
 ## 주소
 
@@ -82,7 +86,7 @@ docker compose run --rm --no-deps vision pytest -q
 | `GET /health` | compose | 상태 |
 | `POST /frames` | stream | ④ 프레임 받기 → ⑤ gesture로 전달 |
 | `POST /detect` | 개발자 | JPEG 한 장의 손 좌표를 바로 돌려줌 |
-| `GET /stats` | 개발자 | 받은 수, 손 찾은 수, 손 없음, 400 수, gesture 전송 성공·실패, 처리 시간 |
+| `GET /stats` | 개발자 | 받은 수, 손 찾은 수, 손 없음, 400 수, gesture 전송 성공·실패, 처리 시간, 추적 중인 세션 수 |
 
 ## 의존성 메모
 

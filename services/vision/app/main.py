@@ -18,7 +18,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from .config import Settings, load_settings
-from .detector import BadImage, HandDetector
+from .detector import BadImage, HandDetector, SessionDetectors
 
 log = logging.getLogger("uvicorn.error")
 LOG_EVERY = 30.0  # 같은 오류는 이 간격으로만 로그를 남긴다
@@ -47,15 +47,21 @@ async def lifespan(app: FastAPI):
     settings = load_settings()
     app.state.settings = settings
     app.state.client = httpx.AsyncClient()
-    app.state.detector = HandDetector(settings)
+    app.state.detector = HandDetector(settings, static=True)  # POST /detect(사진 한 장)용, 추적 끔일 때 /frames도
+    # /frames용: 세션마다 앞 프레임을 이어서 추적한다 (좌표가 튀지 않게)
+    app.state.sessions = SessionDetectors(settings, lambda: HandDetector(settings, static=False)) \
+        if settings.tracking else None
     app.state.stats = Stats()
     app.state.last_log = {}
-    log.info("vision 시작: gesture=%s, 시간 제한 %dms, 좌우 반전 %s, 모델 %s, 최소 신뢰도 %.2f",
+    log.info("vision 시작: gesture=%s, 시간 제한 %dms, 좌우 반전 %s, 모델 %s, 최소 신뢰도 %.2f, 추적 %s",
              settings.gesture_url or "(보내지 않음)", settings.timeout_ms, "켬" if settings.mirror else "끔",
-             "full" if settings.model_complexity else "lite", settings.min_detection)
+             "full" if settings.model_complexity else "lite", settings.min_detection,
+             "켬" if settings.tracking else "끔")
     yield
     await app.state.client.aclose()
     app.state.detector.close()
+    if app.state.sessions is not None:
+        app.state.sessions.close()
 
 
 app = FastAPI(title="vision", version="0.1.0", lifespan=lifespan)
@@ -70,7 +76,8 @@ async def health(request: Request):
 @app.get("/stats")
 async def stats(request: Request):
     """개발·디버그용: 처리 현황과 처리 시간."""
-    return request.app.state.stats.__dict__
+    s = request.app.state
+    return {**s.stats.__dict__, "tracked_sessions": len(s.sessions) if s.sessions is not None else None}
 
 
 def _bad(stats: Stats, message: str) -> JSONResponse:
@@ -99,11 +106,17 @@ async def _read_jpeg(request: Request, settings: Settings) -> bytes | str:
     return body
 
 
-async def _detect(request: Request, body: bytes) -> dict | None:
-    """MediaPipe는 CPU를 쓰므로 이벤트 루프를 막지 않게 스레드에서 돌린다."""
+async def _detect(request: Request, body: bytes, sid: str | None = None) -> dict | None:
+    """MediaPipe는 CPU를 쓰므로 이벤트 루프를 막지 않게 스레드에서 돌린다.
+
+    sid가 있고 추적이 켜져 있으면 그 세션의 추적기로, 아니면 사진 한 장용 detector로 찾는다.
+    """
     s = request.app.state
     started = time.perf_counter()
-    hand = await asyncio.to_thread(s.detector.detect, body)
+    if sid and s.sessions is not None:
+        hand = await asyncio.to_thread(s.sessions.detect, sid, body)
+    else:
+        hand = await asyncio.to_thread(s.detector.detect, body)
     s.stats.add_detect((time.perf_counter() - started) * 1000)
     if hand is None:
         s.stats.no_hand += 1
@@ -129,7 +142,7 @@ async def frames(request: Request):
     if isinstance(body, str):
         return _bad(s.stats, body)
     try:
-        hand = await _detect(request, body)
+        hand = await _detect(request, body, sid)
     except BadImage as e:
         return _bad(s.stats, str(e))
 

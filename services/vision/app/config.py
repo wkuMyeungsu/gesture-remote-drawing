@@ -14,7 +14,11 @@ class Settings:
     max_frame_bytes: int
     model_complexity: int  # MediaPipe Hands 모델. 0: lite(빠름), 1: full(정확)
     min_detection: float  # 손으로 인정할 최소 신뢰도
-    max_hands: int  # 찾을 손 개수. 보낼 때는 score가 가장 높은 손 하나만
+    max_hands: int  # 찾을 손 개수. 보낼 때는 하나만 (앞 프레임 손에 가장 가까운 손, 처음에는 score가 가장 높은 손)
+    tracking: bool  # 세션마다 앞 프레임의 손을 이어서 추적한다 (끄면 프레임마다 처음부터 찾아 좌표가 튄다)
+    min_tracking: float  # 추적을 이어 갈 최소 신뢰도. 이보다 낮으면 그 프레임에서 손을 다시 찾는다
+    max_sessions: int  # 동시에 추적할 세션 수 (세션마다 MediaPipe 그래프 하나)
+    session_idle_s: float  # 이 시간 동안 프레임이 없는 세션의 추적기는 정리한다
 
 
 def _env(name: str, default: str) -> str:
@@ -35,5 +39,9 @@ def load_settings() -> Settings:
         max_frame_bytes=int(_env("VISION_MAX_FRAME_BYTES", str(1024 * 1024))),
         model_complexity=int(_env("VISION_MODEL_COMPLEXITY", "0")),
         min_detection=float(_env("VISION_MIN_DETECTION", "0.5")),
-        max_hands=int(_env("VISION_MAX_HANDS", "2")),
+        max_hands=int(_env("VISION_MAX_HANDS", "1")),
+        tracking=_flag("VISION_TRACKING", True),
+        min_tracking=float(_env("VISION_MIN_TRACKING", "0.5")),
+        max_sessions=int(_env("VISION_MAX_SESSIONS", "4")),
+        session_idle_s=float(_env("VISION_SESSION_IDLE_S", "30")),
     )
