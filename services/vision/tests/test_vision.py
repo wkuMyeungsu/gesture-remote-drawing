@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 import app.main as main
 from app.config import load_settings
-from app.detector import BadImage, decode, pick_hand, preprocess
+from app.detector import ANCHOR, BadImage, SessionDetectors, decode, pick_hand, preprocess
 
 SID = "5f0c2a9e-0d7b-4c1e-9a3f-2b8e6d4c1a70"
 HEADERS = {"Content-Type": "image/jpeg", "X-Session-Id": SID, "X-Frame-Id": "42", "X-Ts": "1793253600123"}
@@ -30,8 +30,8 @@ JPEG = make_jpeg()
 
 # ---------- MediaPipe 결과 흉내 ----------
 
-def fake_hand(label, score, x0=0.5):
-    marks = SimpleNamespace(landmark=[SimpleNamespace(x=x0 + i * 0.01, y=0.6, z=-0.01 * i) for i in range(21)])
+def fake_hand(label, score, x0=0.5, y0=0.6):
+    marks = SimpleNamespace(landmark=[SimpleNamespace(x=x0 + i * 0.01, y=y0, z=-0.01 * i) for i in range(21)])
     hand = SimpleNamespace(classification=[SimpleNamespace(label=label, score=score)])
     return marks, hand
 
@@ -64,6 +64,62 @@ def test_pick_hand_clamps_xy():
     hand = pick_hand(fake_results(fake_hand("Right", 0.9, x0=0.99)), mirrored=True)
     xs = [p[0] for p in hand["points"]]
     assert max(xs) == 1.0 and min(xs) == 0.99
+
+
+def test_pick_hand_keeps_same_hand_as_previous_frame():
+    # 손이 둘이면 score가 아니라 앞 프레임 손과 가까운 쪽을 고른다 (두 손 사이를 오가며 좌표가 튀지 않게)
+    left = fake_hand("Left", 0.95, x0=0.1, y0=0.2)
+    right = fake_hand("Right", 0.80, x0=0.6, y0=0.7)
+    prev = (0.6 + ANCHOR * 0.01, 0.7)
+    hand = pick_hand(fake_results(left, right), mirrored=True, prev=prev)
+    assert hand["handedness"] == "Right" and hand["points"][0][0] == 0.6
+    # 앞 프레임 손이 없으면 score로
+    assert pick_hand(fake_results(left, right), mirrored=True)["handedness"] == "Left"
+
+
+# ---------- 세션별 추적기 ----------
+
+class FakeTracker:
+    made = []
+
+    def __init__(self):
+        self.frames, self.closed = 0, False
+        FakeTracker.made.append(self)
+
+    def detect(self, jpeg):
+        self.frames += 1
+        return None
+
+    def close(self):
+        self.closed = True
+
+
+def test_session_detectors_one_tracker_per_session(monkeypatch):
+    monkeypatch.setattr(FakeTracker, "made", [])
+    pool = SessionDetectors(load_settings(), FakeTracker)
+    pool.detect("a", JPEG)
+    pool.detect("a", JPEG)
+    pool.detect("b", JPEG)
+    assert len(pool) == 2 and len(FakeTracker.made) == 2
+    assert [t.frames for t in FakeTracker.made] == [2, 1]
+    pool.close()
+    assert all(t.closed for t in FakeTracker.made) and len(pool) == 0
+
+
+def test_session_detectors_evicts_oldest_and_idle(monkeypatch):
+    monkeypatch.setattr(FakeTracker, "made", [])
+    monkeypatch.setenv("VISION_MAX_SESSIONS", "2")
+    monkeypatch.setenv("VISION_SESSION_IDLE_S", "1000")
+    pool = SessionDetectors(load_settings(), FakeTracker)
+    for sid in ("a", "b", "a", "c"):  # c가 들어오면 가장 오래 쉰 b를 정리
+        pool.detect(sid, JPEG)
+    assert len(pool) == 2 and FakeTracker.made[1].closed and not FakeTracker.made[0].closed
+
+    monkeypatch.setenv("VISION_SESSION_IDLE_S", "0")
+    pool.settings = load_settings()
+    pool.detect("d", JPEG)  # 쉰 세션(a, c)은 정리
+    assert len(pool) == 1
+    pool.close()
 
 
 # ---------- 전처리 ----------
@@ -105,7 +161,7 @@ class FakeDetector:
 
     hand = {"handedness": "Right", "score": 0.94, "points": [[0.5, 0.6, 0.0]] * 21}
 
-    def __init__(self, settings):
+    def __init__(self, settings, static=True):
         self.calls = 0
 
     def detect(self, jpeg):
@@ -231,6 +287,22 @@ def test_gesture_disabled(make_client):
     assert fake.received == []
 
 
+def test_frames_use_session_tracker(make_client):
+    client = make_client(FakeGesture())
+    other = {**HEADERS, "X-Session-Id": "other"}
+    for headers in (HEADERS, HEADERS, other):
+        assert client.post("/frames", content=JPEG, headers=headers).status_code == 200
+    assert client.get("/stats").json()["tracked_sessions"] == 2
+    assert client.app.state.detector.calls == 0  # 사진 한 장용 detector는 쓰지 않음
+
+
+def test_frames_without_tracking(make_client):
+    client = make_client(FakeGesture(), VISION_TRACKING="0")
+    assert client.post("/frames", content=JPEG, headers=HEADERS).status_code == 200
+    assert client.app.state.detector.calls == 1
+    assert client.get("/stats").json()["tracked_sessions"] is None
+
+
 def test_detect_endpoint(make_client):
     client = make_client(FakeGesture())
     r = client.post("/detect", content=JPEG, headers={"Content-Type": "image/jpeg"})
@@ -245,8 +317,10 @@ def test_real_mediapipe_blank_frame_has_no_hand(monkeypatch):
     pytest.importorskip("mediapipe")
     from app.detector import HandDetector
 
-    detector = HandDetector(load_settings())
-    try:
-        assert detector.detect(JPEG) is None
-    finally:
-        detector.close()
+    for static in (True, False):
+        detector = HandDetector(load_settings(), static=static)
+        try:
+            assert detector.detect(JPEG) is None
+            assert detector.detect(JPEG) is None
+        finally:
+            detector.close()
