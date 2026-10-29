@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 import app.main as main
 from app.config import load_settings
-from app.detector import ANCHOR, BadImage, SessionDetectors, decode, pick_hand, preprocess
+from app.detector import ANCHOR, BadImage, HandDetector, SessionDetectors, decode, pick_hand, preprocess
 
 SID = "5f0c2a9e-0d7b-4c1e-9a3f-2b8e6d4c1a70"
 HEADERS = {"Content-Type": "image/jpeg", "X-Session-Id": SID, "X-Frame-Id": "42", "X-Ts": "1793253600123"}
@@ -86,7 +86,7 @@ class FakeTracker:
         self.frames, self.closed = 0, False
         FakeTracker.made.append(self)
 
-    def detect(self, jpeg):
+    def detect(self, jpeg, ts=None):
         self.frames += 1
         return None
 
@@ -120,6 +120,47 @@ def test_session_detectors_evicts_oldest_and_idle(monkeypatch):
     pool.detect("d", JPEG)  # 쉰 세션(a, c)은 정리
     assert len(pool) == 1
     pool.close()
+
+
+class FakeHands:
+    """mp.solutions.hands.Hands 흉내: 손 하나를 돌려주고 reset 횟수를 센다."""
+
+    def __init__(self):
+        self.resets = 0
+
+    def process(self, rgb):
+        return fake_results(fake_hand("Right", 0.9))
+
+    def reset(self):
+        self.resets += 1
+
+
+def tracking_detector(monkeypatch, gap_ms="1000"):
+    monkeypatch.setenv("VISION_RESET_GAP_MS", gap_ms)
+    det = HandDetector.__new__(HandDetector)  # MediaPipe 없이 HandDetector의 추적 로직만 확인
+    det.settings, det.static, det._hands = load_settings(), False, FakeHands()
+    det._lock, det._prev, det._last_ts, det.resets = __import__("threading").Lock(), None, None, 0
+    return det
+
+
+def test_tracking_resets_after_time_gap(monkeypatch):
+    det = tracking_detector(monkeypatch)
+    for ts in (1000, 1100, 1200):  # 100ms 간격: 이어서 추적
+        det.detect(JPEG, ts)
+    assert det._hands.resets == 0 and det._prev is not None
+    det.detect(JPEG, 5000)  # 3.8초 끊김: 처음부터
+    assert det._hands.resets == 1 and det.resets == 1
+    det.detect(JPEG, 4000)  # 시간이 거꾸로 감(새 연결 등): 처음부터
+    assert det._hands.resets == 2
+    det.detect(JPEG, None)  # ts 없음: 판단하지 않음
+    assert det._hands.resets == 2
+
+
+def test_tracking_reset_disabled(monkeypatch):
+    det = tracking_detector(monkeypatch, gap_ms="0")
+    det.detect(JPEG, 1000)
+    det.detect(JPEG, 99999)
+    assert det._hands.resets == 0
 
 
 # ---------- 전처리 ----------
@@ -164,7 +205,7 @@ class FakeDetector:
     def __init__(self, settings, static=True):
         self.calls = 0
 
-    def detect(self, jpeg):
+    def detect(self, jpeg, ts=None):
         decode(jpeg)
         self.calls += 1
         return FakeDetector.hand
@@ -292,7 +333,8 @@ def test_frames_use_session_tracker(make_client):
     other = {**HEADERS, "X-Session-Id": "other"}
     for headers in (HEADERS, HEADERS, other):
         assert client.post("/frames", content=JPEG, headers=headers).status_code == 200
-    assert client.get("/stats").json()["tracked_sessions"] == 2
+    stats = client.get("/stats").json()
+    assert stats["tracked_sessions"] == 2 and stats["tracking_resets"] == 0
     assert client.app.state.detector.calls == 0  # 사진 한 장용 detector는 쓰지 않음
 
 
@@ -320,7 +362,8 @@ def test_real_mediapipe_blank_frame_has_no_hand(monkeypatch):
     for static in (True, False):
         detector = HandDetector(load_settings(), static=static)
         try:
-            assert detector.detect(JPEG) is None
-            assert detector.detect(JPEG) is None
+            assert detector.detect(JPEG, 1000) is None
+            assert detector.detect(JPEG, 9000) is None  # 추적 모드면 간격이 벌어져 reset()까지 돈다
+            assert detector.resets == (0 if static else 1)
         finally:
             detector.close()

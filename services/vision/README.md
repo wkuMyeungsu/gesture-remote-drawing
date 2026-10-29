@@ -29,7 +29,7 @@ stream ──④ POST /frames (JPEG, X-Session-Id·X-Frame-Id·X-Ts)──▶ vi
 ### 처리 규칙
 
 - **좌우 반전은 vision에서 한 번만**: 휴대폰은 뒤집지 않은 프레임을 보낸다. gesture는 `GESTURE_MIRROR=0`(기본)으로 두면 된다.
-- **세션마다 추적**: 세션마다 MediaPipe Hands를 하나씩 두고 추적 모드(`static_image_mode=False`)로 돌린다. 프레임마다 처음부터 찾으면(정지 이미지 모드) 점이 프레임마다 흔들리고, 두 손·오검출 사이를 오가며 좌표가 튄다. 추적이 끊기면 그 프레임에서 다시 찾는다. `VISION_SESSION_IDLE_S` 동안 프레임이 없는 세션은 정리하고, 최대 `VISION_MAX_SESSIONS`개까지 둔다. vision을 여러 개로 늘리려면 같은 세션은 같은 vision으로 보내야 한다. 남은 작은 떨림 보정은 gesture가 한다.
+- **세션마다 추적**: 세션마다 MediaPipe Hands를 하나씩 두고 추적 모드(`static_image_mode=False`)로 돌린다. 프레임마다 처음부터 찾으면(정지 이미지 모드) 점이 프레임마다 흔들리고, 두 손·오검출 사이를 오가며 좌표가 튄다. 추적이 끊기면 그 프레임에서 다시 찾고, 프레임 간격이 `VISION_RESET_GAP_MS`보다 벌어지면 몇 초 전 손 위치를 이어 쓰지 않게 처음부터 다시 한다. `VISION_SESSION_IDLE_S` 동안 프레임이 없는 세션은 정리하고, 최대 `VISION_MAX_SESSIONS`개까지 둔다. vision을 여러 개로 늘리려면 같은 세션은 같은 vision으로 보내야 한다. 남은 작은 떨림 보정은 gesture가 한다.
 - **한 번에 한 프레임**: MediaPipe 그래프는 동시에 부를 수 없어 세션별 잠금으로 순서대로 처리한다. 320×240 한 장에 약 20~30ms (lite 모델, CPU).
 - **응답 코드**: 성공 `200 {"ok": true}`. 헤더·JPEG가 틀리면 `400`. gesture가 실패·시간 초과(200ms)면 `502` → stream 쪽에는 `vision_502`로 보인다.
 
@@ -47,6 +47,16 @@ docker compose up --build vision
 curl -X POST http://localhost:8003/detect -H "Content-Type: image/jpeg" --data-binary @손사진.jpg
 python services/vision/dev/try_image.py 손사진.jpg --draw out.png   # 점을 그린 그림 저장 (opencv-python 필요)
 ```
+
+### 손 영상으로 떨림 재기
+
+휴대폰으로 손 영상(검지 펴고 2~3초 가만히 → 천천히 그리기 → 빠르게 그리기)을 찍어 `services/vision/dev/`에 넣고:
+
+```bash
+docker compose run --rm --no-deps -v ./services/vision/dev:/app/dev vision python dev/measure_jitter.py dev/손영상.mp4
+```
+
+같은 영상을 추적 끔(예전)·켬(지금)으로 돌려 손 찾은 비율, 검지 끝 이동(중앙값·p95), 튐 횟수, 손 바뀜 횟수, 처리 시간을 비교해 보여 준다.
 
 ### stream과 같이
 
@@ -78,6 +88,7 @@ docker compose run --rm --no-deps vision pytest -q
 | `VISION_MIN_TRACKING` | `0.5` | 추적을 이어 갈 최소 신뢰도. 낮추면 덜 끊기고, 높이면 빠른 손에서 더 자주 다시 찾는다 |
 | `VISION_MAX_SESSIONS` | `4` | 동시에 추적할 세션 수 (세션마다 MediaPipe 그래프 하나) |
 | `VISION_SESSION_IDLE_S` | `30` | 이 시간(초) 동안 프레임이 없는 세션의 추적기는 정리 |
+| `VISION_RESET_GAP_MS` | `1000` | 같은 세션의 프레임 간격(`X-Ts`)이 이보다 벌어지면(연결 끊김·앱 전환) 추적을 처음부터 다시 한다. `0`이면 안 함 |
 
 ## 주소
 
@@ -86,7 +97,7 @@ docker compose run --rm --no-deps vision pytest -q
 | `GET /health` | compose | 상태 |
 | `POST /frames` | stream | ④ 프레임 받기 → ⑤ gesture로 전달 |
 | `POST /detect` | 개발자 | JPEG 한 장의 손 좌표를 바로 돌려줌 |
-| `GET /stats` | 개발자 | 받은 수, 손 찾은 수, 손 없음, 400 수, gesture 전송 성공·실패, 처리 시간, 추적 중인 세션 수 |
+| `GET /stats` | 개발자 | 받은 수, 손 찾은 수, 손 없음, 400 수, gesture 전송 성공·실패, 처리 시간, 추적 중인 세션 수, 간격 때문에 다시 시작한 횟수 |
 
 ## 의존성 메모
 
