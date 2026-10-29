@@ -21,6 +21,7 @@
 - **최신 프레임만**: vision 응답을 기다리는 중에 들어온 프레임은 큐에 쌓지 않고 바로 버린다 (`dropped: true, reason: "busy"`).
 - **시간 제한 200ms**: vision 요청 전체가 200ms를 넘으면 그 프레임은 버린다 (`reason: "vision_timeout"`).
 - **세션**: security(nginx)가 붙인 `X-Session-Id` 헤더만 믿는다. 없으면 `4401`로 연결을 닫는다. 같은 세션에 휴대폰이 다시 붙으면 이전 연결을 `4409`로 닫는다.
+- **정리**: 휴대폰이 끊긴 세션은 10분(`STREAM_SESSION_TTL`) 뒤 지운다. stream이 꺼질 때는 연결돼 있던 휴대폰을 web에 `disconnected`로 알려, 그림판이 "연결됨"으로 남지 않게 한다.
 
 ### 휴대폰 페이지와 주고받는 메시지
 
@@ -91,6 +92,7 @@ docker compose run --rm --no-deps stream pytest -q
 | `STREAM_JPEG_QUALITY` | `0.6` | JPEG 품질 |
 | `STREAM_MAX_FPS` | `15` | 최대 초당 프레임 수 |
 | `STREAM_DEV_SID` | (없음) | 개발용 세션. 정하면 `X-Session-Id`가 없을 때 `?sid=` 또는 이 값을 쓴다 |
+| `STREAM_SESSION_TTL` | `600` | 휴대폰이 끊긴 세션을 지우기까지의 시간 (초) |
 
 ## 주소
 
@@ -99,4 +101,6 @@ docker compose run --rm --no-deps stream pytest -q
 | `GET /health` | compose | 상태 |
 | `GET /m/` | 휴대폰 (security 경유) | 카메라 페이지 |
 | `WS /ws/stream` | 휴대폰 (security 경유) | 프레임 보내기, ack 받기 |
-| `GET /sessions` | 개발자 | 세션별 받은·보낸·버린 프레임 수, 마지막 vision 응답 시간 |
+| `GET /sessions` | 개발자 | 세션별 받은·보낸·버린 프레임 수, 최근 10초 처리 현황(`recent`) |
+
+`/sessions`의 `recent`는 최근 10초 평균이다: `fps`(vision이 처리한 초당 프레임 수), `vision_ms_avg`·`vision_ms_p95`(vision 응답 시간), `drop_rate`(버린 비율). 200ms 시간 제한이 적당한지, vision이 얼마나 빠른지 볼 때 쓴다.
