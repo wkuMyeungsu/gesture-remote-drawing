@@ -26,6 +26,38 @@
     <div id="cursor" hidden></div>
     <canvas id="hand" hidden></canvas>
     <div id="guide" hidden></div>
+
+    <div id="tools" class="tools collapsed">
+      <button id="tool-open" class="tool-fab" type="button" aria-label="그리기 도구 열기" title="그리기 도구">
+        <svg viewBox="0 0 24 24"><path d="M4 20l4.5-1L19 8.5 15.5 5 5 15.5 4 20z"/><path d="M13.5 7l3.5 3.5"/></svg>
+      </button>
+      <div class="tool-panel" role="toolbar" aria-label="그리기 도구">
+        <button type="button" data-tool="pen" class="active" aria-label="펜" title="펜">
+          <svg viewBox="0 0 24 24"><path d="M4 20l4.5-1L19 8.5 15.5 5 5 15.5 4 20z"/><path d="M13.5 7l3.5 3.5"/></svg>
+        </button>
+        <button type="button" data-tool="eraser" aria-label="지우개" title="지우개">
+          <svg viewBox="0 0 24 24"><path d="M9 20h11"/><path d="M4.5 15.5l9-9 6 6-7.5 7.5H8.5l-4-4z"/><path d="M9.5 10.5l6 6"/></svg>
+        </button>
+        <button type="button" id="tool-color" aria-label="다음 색" title="다음 색">
+          <i id="tool-color-dot" class="tool-dot"></i>
+        </button>
+        <hr>
+        <button type="button" id="tool-undo" aria-label="실행 취소" title="실행 취소">
+          <svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11"/></svg>
+        </button>
+        <button type="button" id="tool-clear" aria-label="전체 지우기" title="전체 지우기">
+          <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg>
+        </button>
+        <button type="button" id="tool-save" aria-label="PNG로 저장" title="PNG로 저장">
+          <svg viewBox="0 0 24 24"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>
+        </button>
+        <hr>
+        <span class="tool-hand">✋<br>손 우선</span>
+        <button type="button" id="tool-close" class="close" aria-label="그리기 도구 닫기" title="닫기">
+          <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+    </div>
   </main>
 
   <section id="pair" class="pair">
