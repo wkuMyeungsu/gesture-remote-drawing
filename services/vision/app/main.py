@@ -77,7 +77,9 @@ async def health(request: Request):
 async def stats(request: Request):
     """개발·디버그용: 처리 현황과 처리 시간."""
     s = request.app.state
-    return {**s.stats.__dict__, "tracked_sessions": len(s.sessions) if s.sessions is not None else None}
+    tracked = s.sessions is not None
+    return {**s.stats.__dict__, "tracked_sessions": len(s.sessions) if tracked else None,
+            "tracking_resets": s.sessions.resets() if tracked else None}
 
 
 def _bad(stats: Stats, message: str) -> JSONResponse:
@@ -106,7 +108,7 @@ async def _read_jpeg(request: Request, settings: Settings) -> bytes | str:
     return body
 
 
-async def _detect(request: Request, body: bytes, sid: str | None = None) -> dict | None:
+async def _detect(request: Request, body: bytes, sid: str | None = None, ts: int | None = None) -> dict | None:
     """MediaPipe는 CPU를 쓰므로 이벤트 루프를 막지 않게 스레드에서 돌린다.
 
     sid가 있고 추적이 켜져 있으면 그 세션의 추적기로, 아니면 사진 한 장용 detector로 찾는다.
@@ -114,7 +116,7 @@ async def _detect(request: Request, body: bytes, sid: str | None = None) -> dict
     s = request.app.state
     started = time.perf_counter()
     if sid and s.sessions is not None:
-        hand = await asyncio.to_thread(s.sessions.detect, sid, body)
+        hand = await asyncio.to_thread(s.sessions.detect, sid, body, ts)
     else:
         hand = await asyncio.to_thread(s.detector.detect, body)
     s.stats.add_detect((time.perf_counter() - started) * 1000)
@@ -142,7 +144,7 @@ async def frames(request: Request):
     if isinstance(body, str):
         return _bad(s.stats, body)
     try:
-        hand = await _detect(request, body, sid)
+        hand = await _detect(request, body, sid, ts)
     except BadImage as e:
         return _bad(s.stats, str(e))
 

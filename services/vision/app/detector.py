@@ -9,6 +9,8 @@
   점 위치가 안정적이고 빠르다. 추적이 끊기면(신뢰도 < min_tracking) 그 프레임에서 다시 찾는다.
 - 같은 손 고르기: 손이 여럿이면 앞 프레임에서 보낸 손에 가장 가까운 손을 고른다.
   score만 보면 두 손(또는 오검출) 사이를 프레임마다 오가며 좌표가 크게 점프한다.
+- 끊긴 뒤 초기화: 같은 세션이라도 프레임 간격이 reset_gap_ms보다 벌어지면(연결 끊김·앱 전환)
+  몇 초 전 손 위치를 이어 쓰지 않고 추적을 처음부터 다시 한다.
 """
 from __future__ import annotations
 
@@ -111,11 +113,25 @@ class HandDetector:
         )
         self._lock = threading.Lock()
         self._prev: tuple[float, float] | None = None  # 앞 프레임에서 보낸 손의 ANCHOR 점
+        self._last_ts: int | None = None  # 앞 프레임의 X-Ts (unix ms)
+        self.resets = 0  # 프레임 간격이 벌어져 추적을 처음부터 다시 한 횟수
 
-    def detect(self, jpeg: bytes) -> dict | None:
-        """JPEG 한 장 → ⑤의 hand (없으면 None). JPEG가 틀리면 BadImage."""
+    def _gap_reset(self, ts: int | None) -> None:
+        """추적 모드에서 프레임 간격이 reset_gap_ms보다 크거나 시간이 거꾸로 가면 추적을 처음부터 다시 한다."""
+        if self.static or ts is None:
+            return
+        gap = self.settings.reset_gap_ms
+        if gap > 0 and self._last_ts is not None and (ts - self._last_ts > gap or ts < self._last_ts):
+            self._hands.reset()  # 그래프를 다시 시작해 MediaPipe 내부의 이전 손 영역을 버린다
+            self._prev = None
+            self.resets += 1
+        self._last_ts = ts
+
+    def detect(self, jpeg: bytes, ts: int | None = None) -> dict | None:
+        """JPEG 한 장 → ⑤의 hand (없으면 None). JPEG가 틀리면 BadImage. ts는 X-Ts (추적 초기화 판단용)."""
         rgb = preprocess(decode(jpeg), self.settings)
         with self._lock:
+            self._gap_reset(ts)
             results = self._hands.process(rgb)
             hand = pick_hand(results, self.settings.mirror, None if self.static else self._prev)
             if not self.static:
@@ -163,8 +179,13 @@ class SessionDetectors:
             old.close()
         return det
 
-    def detect(self, sid: str, jpeg: bytes) -> dict | None:
-        return self._get(sid).detect(jpeg)
+    def detect(self, sid: str, jpeg: bytes, ts: int | None = None) -> dict | None:
+        return self._get(sid).detect(jpeg, ts)
+
+    def resets(self) -> int:
+        """지금 추적 중인 세션들에서 프레임 간격 때문에 추적을 다시 시작한 횟수의 합."""
+        with self._lock:
+            return sum(getattr(det, "resets", 0) for det, _ in self._items.values())
 
     def close(self) -> None:
         with self._lock:

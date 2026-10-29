@@ -19,6 +19,7 @@ class Settings:
     min_tracking: float  # 추적을 이어 갈 최소 신뢰도. 이보다 낮으면 그 프레임에서 손을 다시 찾는다
     max_sessions: int  # 동시에 추적할 세션 수 (세션마다 MediaPipe 그래프 하나)
     session_idle_s: float  # 이 시간 동안 프레임이 없는 세션의 추적기는 정리한다
+    reset_gap_ms: int  # 같은 세션의 프레임 간격(X-Ts)이 이보다 벌어지면 추적을 처음부터 다시 한다 (0이면 안 함)
 
 
 def _env(name: str, default: str) -> str:
@@ -44,4 +45,5 @@ def load_settings() -> Settings:
         min_tracking=float(_env("VISION_MIN_TRACKING", "0.5")),
         max_sessions=int(_env("VISION_MAX_SESSIONS", "4")),
         session_idle_s=float(_env("VISION_SESSION_IDLE_S", "30")),
+        reset_gap_ms=int(_env("VISION_RESET_GAP_MS", "1000")),
     )
