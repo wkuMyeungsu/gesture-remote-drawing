@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>시스템 구조도</title>
+<title>시스템 아키텍처</title>
 <style>
 :root{--bg:#eceff1;--paper:#fff;--ink:#111;--muted:#555;--rule:#111;--thin:#b8bec4;--code:#f3f4f5;--net:#e8f0f8;--todo:#b26a00}
 *{box-sizing:border-box}
@@ -39,8 +39,10 @@ li{margin:3px 0}
 <body>
 <div class="doc">
 
-<h1>시스템 구조도</h1>
-<p class="sub">실시간 손동작 인식 원격 그림판의 컨테이너 5개와 기기 사이의 연결. 기준: 2026-10-29, 제안 단계 (구현 전). 지금 저장소의 서비스는 모두 <code>/health</code>만 답하는 뼈대다.</p>
+<h1>시스템 아키텍처</h1>
+<p class="sub">실시간 손동작 인식 원격 그림판 · 컨테이너 5개와 기기 사이의 연결<br>
+기준 2026-10-29 · 5개 서비스 구현 완료 · 연결 ①~⑧ 동작<br>
+서비스 내부 설명은 각 폴더의 <code>README.md</code></p>
 
 <h2>구조</h2>
 <div class="graph">
@@ -61,7 +63,7 @@ li{margin:3px 0}
   <text class="t" x="105" y="466" text-anchor="middle">QR · 그림판 화면</text>
 
   <rect class="box" x="260" y="226" width="200" height="90" rx="4"/>
-  <text class="n" x="360" y="254" text-anchor="middle">1 security :443</text>
+  <text class="n" x="360" y="254" text-anchor="middle">1 security :443 · :80</text>
   <text class="t" x="360" y="276" text-anchor="middle">nginx (TLS · 라우팅)</text>
   <text class="t" x="360" y="296" text-anchor="middle">+ 세션 API :8001</text>
 
@@ -89,7 +91,7 @@ li{margin:3px 0}
   <!-- ② PC 브라우저 ↔ security -->
   <path class="ln both" d="M192 450H310V318"/>
   <text class="n halo" x="250" y="442" text-anchor="middle">②</text>
-  <text class="t halo" x="322" y="390">HTTPS · WSS</text>
+  <text class="t halo" x="322" y="390">HTTP(S) · WS(S)</text>
 
   <!-- ③ security → stream -->
   <path class="ln both" d="M462 246H500V74H548"/>
@@ -130,82 +132,95 @@ li{margin:3px 0}
 <h2>서비스</h2>
 <div class="tw"><table>
   <tr><th>번호</th><th>서비스</th><th>포트</th><th>하는 일</th><th>가진 상태</th><th>담당</th></tr>
-  <tr><td>0</td><td><code>web</code></td><td>8000</td><td>PC 그림판 페이지 제공, QR 표시, ⑥ 기능(<code>action</code>)을 PC 브라우저로 WebSocket 중계, 브라우저에서 기능 실행(그리기·지우기·실행 취소·색과 굵기 변경·PNG 저장)</td><td>세션별 PC 화면 연결, 현재 도구·색·굵기 (브라우저 안)</td><td>박명수</td></tr>
-  <tr><td>1</td><td><code>security</code></td><td>443 (nginx)<br>8001 (세션 API)</td><td>HTTPS 종료, 경로별 라우팅, QR 세션 발급, <code>auth_request</code>로 휴대폰 요청 검사</td><td>세션 목록, 1회용 토큰</td><td>김도은</td></tr>
-  <tr><td>2</td><td><code>stream</code></td><td>8002</td><td>휴대폰 카메라 페이지 제공, WebSocket으로 프레임 수신, 해상도·fps·압축 조절, vision으로 전달</td><td>세션별 처리 중 여부</td><td>임우진</td></tr>
-  <tr><td>3</td><td><code>vision</code></td><td>8003</td><td>JPEG 디코딩, 좌우 반전, MediaPipe Hands로 손 좌표 21개 추출</td><td>없음 (여러 개로 늘릴 수 있음)</td><td>이진아</td></tr>
-  <tr><td>4</td><td><code>gesture</code></td><td>8004</td><td>좌표 흔들림 보정, 손 모양·움직임으로 동작(<code>gesture</code>) 판별, 대응표로 기능(<code>action</code>) 결정</td><td>세션별 이전 좌표, 펜 상태, 필터 값</td><td>김대희</td></tr>
+  <tr><td>0</td><td><code>web</code></td><td>8000</td><td>그림판 페이지 · QR 표시<br>⑥ <code>action</code>을 PC 브라우저로 중계<br>브라우저에서 기능 실행</td><td>PC 화면 연결 (세션별)<br>도구·색·굵기 (브라우저)</td><td>박명수</td></tr>
+  <tr><td>1</td><td><code>security</code></td><td>443 nginx<br>80 PC 전용<br>8001 세션 API</td><td>HTTPS · 경로별 라우팅<br>QR 세션 발급 · 휴대폰 인증<br>내부 전용 경로 차단</td><td>세션 목록<br>1회용 토큰</td><td>김도은</td></tr>
+  <tr><td>2</td><td><code>stream</code></td><td>8002</td><td>휴대폰 카메라 페이지<br>프레임 수신 → vision 전달<br>연결·끊김 알림</td><td>세션별 처리 중 여부</td><td>임우진</td></tr>
+  <tr><td>3</td><td><code>vision</code></td><td>8003</td><td>JPEG 디코딩 · 좌우 반전<br>MediaPipe Hands로 손 좌표 21개</td><td>없음 (늘릴 수 있음)</td><td>이진아</td></tr>
+  <tr><td>4</td><td><code>gesture</code></td><td>8004</td><td>좌표 흔들림 보정<br>동작(<code>gesture</code>) 판별<br>대응표로 <code>action</code> 결정</td><td>이전 좌표 · 펜 상태 (세션별)</td><td>김대희</td></tr>
 </table></div>
 
 <h2>연결</h2>
 <div class="tw"><table>
   <tr><th>번호</th><th>보내는 쪽 → 받는 쪽</th><th>주소</th><th>내용</th></tr>
-  <tr><td>①</td><td>휴대폰 ↔ security</td><td><code>https://&lt;PC IP&gt;/m/?token=…</code><br><code>wss://&lt;PC IP&gt;/ws/stream</code></td><td>카메라 페이지 요청, 프레임 전송과 응답(ack)</td></tr>
-  <tr><td>②</td><td>PC 브라우저 ↔ security</td><td><code>https://&lt;PC IP&gt;/</code><br><code>POST /api/session</code><br><code>wss://&lt;PC IP&gt;/ws/board?sid=…</code></td><td>그림판 페이지, 세션 발급, 그리기 명령 수신</td></tr>
-  <tr><td>③</td><td>security → stream</td><td><code>http://stream:8002</code></td><td>①을 프록시. 인증된 세션 ID를 <code>X-Session-Id</code> 헤더로 붙여 전달</td></tr>
-  <tr><td>④</td><td>stream → vision</td><td><code>POST http://vision:8003/frames</code></td><td>JPEG 한 장과 세션·프레임 번호·촬영 시각</td></tr>
-  <tr><td>⑤</td><td>vision → gesture</td><td><code>POST http://gesture:8004/landmarks</code></td><td>손 좌표 21개(0~1 정규화) 또는 손 없음</td></tr>
-  <tr><td>⑥</td><td>gesture → web</td><td><code>POST http://web:8000/actions</code></td><td>인식한 동작 이름·신뢰도, 실행할 기능(<code>action</code>), 좌표(0~1)</td></tr>
-  <tr><td>⑦</td><td>security → web</td><td><code>http://web:8000</code></td><td>②를 프록시</td></tr>
-  <tr><td>⑧</td><td>stream → web</td><td><code>POST http://web:8000/events</code></td><td>휴대폰 연결·끊김 알림</td></tr>
+  <tr><td>①</td><td>휴대폰 ↔ security</td><td><code>https://&lt;PC IP&gt;/m/?token=…</code><br><code>wss://&lt;PC IP&gt;/ws/stream</code></td><td>카메라 페이지<br>프레임 전송 · ack</td></tr>
+  <tr><td>②</td><td>PC 브라우저 ↔ security</td><td><code>http://localhost/</code><br><code>POST /api/session</code><br><code>ws://localhost/ws/board?sid=…</code></td><td>그림판 페이지<br>세션 발급<br>그리기 명령 수신</td></tr>
+  <tr><td>③</td><td>security → stream</td><td><code>http://stream:8002</code></td><td>① 프록시 + <code>X-Session-Id</code></td></tr>
+  <tr><td>④</td><td>stream → vision</td><td><code>POST http://vision:8003/frames</code></td><td>JPEG 1장 + 세션·프레임 번호·시각</td></tr>
+  <tr><td>⑤</td><td>vision → gesture</td><td><code>POST http://gesture:8004/landmarks</code></td><td>손 좌표 21개 또는 손 없음</td></tr>
+  <tr><td>⑥</td><td>gesture → web</td><td><code>POST http://web:8000/actions</code></td><td>동작 · 신뢰도 · <code>action</code> · 좌표</td></tr>
+  <tr><td>⑦</td><td>security → web</td><td><code>http://web:8000</code></td><td>② 프록시</td></tr>
+  <tr><td>⑧</td><td>stream → web</td><td><code>POST http://web:8000/events</code></td><td>휴대폰 연결 · 끊김</td></tr>
 </table></div>
-<p>각 연결의 메시지 형식: <code>docs/contracts/README.md</code>.</p>
+<p>메시지 형식: <code>docs/contracts/README.md</code></p>
 
 <h2>동작 → 기능 계층</h2>
-<p>손 모양을 알아보는 일(gesture)과 화면에서 기능을 실행하는 일(web)을 나눈다. 둘 사이의 약속은 기능 이름 목록(<code>action</code> 표) 하나뿐이다.</p>
+<ul>
+  <li>gesture는 손 모양을 알아보고, web은 기능을 실행한다.</li>
+  <li>둘 사이의 약속은 <code>action</code> 표 하나뿐이다.</li>
+</ul>
 <div class="tw"><table>
   <tr><th>계층</th><th>위치</th><th>담당</th><th>결과</th></tr>
   <tr><td>1 손 좌표</td><td>vision</td><td>이진아</td><td>손 좌표 21개</td></tr>
-  <tr><td>2 특징 추출</td><td>gesture 내부</td><td>김대희</td><td>손가락별 펴짐 여부, 손가락 사이 거리, 이동 속도 등</td></tr>
-  <tr><td>3 동작 판별</td><td>gesture 내부</td><td>김대희</td><td>동작 이름(<code>gesture</code>)과 신뢰도. 규칙으로 하든 학습 모델로 하든 결과 형식은 같다</td></tr>
-  <tr><td>4 대응표</td><td><code>services/gesture/mapping.json</code></td><td>김대희</td><td>동작 이름 → 기능 이름(<code>action</code>)</td></tr>
-  <tr><td>5 기능 실행</td><td>web (PC 브라우저)</td><td>박명수</td><td>화면 변화. 현재 도구·색·굵기는 web이 가진다</td></tr>
+  <tr><td>2 특징 추출</td><td>gesture 내부</td><td>김대희</td><td>손가락 펴짐 · 거리 · 속도</td></tr>
+  <tr><td>3 동작 판별</td><td>gesture 내부</td><td>김대희</td><td>동작 이름 · 신뢰도 (규칙이든 모델이든 같은 형식)</td></tr>
+  <tr><td>4 대응표</td><td><code>services/gesture/mapping.json</code></td><td>김대희</td><td>동작 → <code>action</code></td></tr>
+  <tr><td>5 기능 실행</td><td>web (PC 브라우저)</td><td>박명수</td><td>화면 변화 · 도구 상태</td></tr>
 </table></div>
 <div class="tw"><table>
-  <tr><th>하고 싶은 일</th><th>고치는 곳</th><th>다른 파트와 합의</th></tr>
-  <tr><td>기존 기능을 새 손 모양으로 실행</td><td>gesture 2·3계층, <code>mapping.json</code></td><td>필요 없음</td></tr>
-  <tr><td>손 모양과 기능의 짝 바꾸기</td><td><code>mapping.json</code></td><td>필요 없음</td></tr>
-  <tr><td>판별 방식을 규칙에서 모델로 교체</td><td>gesture 3계층</td><td>필요 없음</td></tr>
-  <tr><td>새 기능 추가 (예: 지우개, 도형)</td><td><code>docs/contracts/README.md</code>의 <code>action</code> 표에 한 줄 추가 → web 구현 → <code>mapping.json</code></td><td>gesture · web</td></tr>
+  <tr><th>하고 싶은 일</th><th>고치는 곳</th><th>합의</th></tr>
+  <tr><td>기존 기능을 새 손 모양으로</td><td>gesture 2·3계층, <code>mapping.json</code></td><td>필요 없음</td></tr>
+  <tr><td>손 모양 ↔ 기능 짝 바꾸기</td><td><code>mapping.json</code></td><td>필요 없음</td></tr>
+  <tr><td>판별을 규칙 → 모델로</td><td>gesture 3계층</td><td>필요 없음</td></tr>
+  <tr><td>새 기능 추가</td><td><code>action</code> 표 → web 구현 → <code>mapping.json</code></td><td>gesture · web</td></tr>
 </table></div>
-<p>web은 모르는 <code>action</code>을 받으면 무시한다. 그래서 gesture가 먼저 새 기능을 보내기 시작해도 화면이 깨지지 않는다.</p>
+<p>web은 모르는 <code>action</code>을 무시한다 → gesture가 먼저 보내도 화면이 깨지지 않는다.</p>
 
 <h2>security 라우팅</h2>
 <div class="tw"><table>
   <tr><th>경로</th><th>보내는 곳</th><th>인증</th></tr>
   <tr><td><code>/</code>, <code>/ws/board</code></td><td><code>web:8000</code></td><td>없음</td></tr>
-  <tr><td><code>/api/session</code></td><td>세션 API <code>127.0.0.1:8001</code></td><td>없음</td></tr>
-  <tr><td><code>/m/</code></td><td><code>stream:8002</code></td><td><code>auth_request</code> — 1회용 토큰 확인 후 <code>sid</code> 쿠키 발급, 토큰 폐기</td></tr>
-  <tr><td><code>/ws/stream</code></td><td><code>stream:8002</code></td><td><code>auth_request</code> — <code>sid</code> 쿠키 확인</td></tr>
-  <tr><td><code>/auth</code></td><td>세션 API <code>127.0.0.1:8001</code></td><td>nginx 내부 전용 (<code>internal</code>)</td></tr>
+  <tr><td><code>/api/session</code></td><td>세션 API <code>:8001</code></td><td>없음 (초당 2회 제한)</td></tr>
+  <tr><td><code>/m/</code></td><td><code>stream:8002</code></td><td>1회용 토큰 → <code>sid</code> 쿠키 발급</td></tr>
+  <tr><td><code>/ws/stream</code></td><td><code>stream:8002</code></td><td><code>sid</code> 쿠키 확인</td></tr>
+  <tr><td><code>/auth</code></td><td>세션 API <code>:8001</code></td><td>nginx 내부 전용</td></tr>
+  <tr><td><code>/actions</code>, <code>/events</code></td><td>404</td><td>바깥 차단 (내부 전용)</td></tr>
 </table></div>
-<p>세션 API가 <code>/auth</code> 응답 헤더에 <code>X-Session-Id</code>를 담으면 nginx가 <code>auth_request_set</code>으로 받아 stream에 넘긴다. stream은 이 헤더만 믿고 클라이언트가 보낸 값은 쓰지 않는다.</p>
+<ul>
+  <li>인증되면 nginx가 <code>X-Session-Id</code>를 붙여 stream에 넘긴다.</li>
+  <li>stream은 이 헤더만 믿는다.</li>
+  <li>443과 <code>http://localhost</code>(80)에 같은 라우팅이 걸린다.</li>
+  <li>설정 파일: <code>services/security/nginx/snippets/routes.conf</code></li>
+</ul>
 
 <h2>페어링 순서</h2>
 <ol>
-  <li>PC 브라우저가 <code>https://&lt;PC IP&gt;/</code>를 열면 web이 그림판 페이지를 준다.</li>
-  <li>페이지가 <code>POST /api/session</code>을 보내 <code>sid</code>와 1회용 <code>token</code>(유효 60초)을 받는다.</li>
-  <li>페이지가 <code>https://&lt;PC IP&gt;/m/?token=…</code>을 QR로 표시하고, <code>/ws/board?sid=…</code>로 WebSocket을 연다.</li>
-  <li>휴대폰이 QR을 스캔해 <code>/m/</code>에 접속한다. security가 토큰을 확인하고 <code>sid</code> 쿠키를 발급한 뒤 토큰을 폐기한다.</li>
-  <li>휴대폰 카메라 페이지가 <code>/ws/stream</code>을 열고, stream이 web에 <code>connected</code> 이벤트(⑧)를 보낸다. PC 화면은 QR을 닫고 그림판을 띄운다.</li>
-  <li>휴대폰이 프레임을 보내기 시작한다 (①→③→④→⑤→⑥→⑦→②).</li>
+  <li>PC가 <code>http://localhost/</code>를 연다 → 그림판 페이지.</li>
+  <li>페이지가 <code>POST /api/session</code> → <code>sid</code> · 1회용 <code>token</code>(60초).</li>
+  <li>페이지가 QR(<code>https://&lt;PC IP&gt;/m/?token=…</code>)을 띄우고 <code>/ws/board</code>를 연다.</li>
+  <li>휴대폰이 QR 스캔 → security가 토큰을 <code>sid</code> 쿠키로 바꾼다.</li>
+  <li>휴대폰이 <code>/ws/stream</code> 연결 → ⑧ <code>connected</code> → PC가 QR을 닫는다.</li>
+  <li>프레임 흐름: ①→③→④→⑤→⑥→⑦→②</li>
 </ol>
 
 <h2>처리 규칙</h2>
 <ul>
-  <li><b>최신 프레임만 처리</b>: 휴대폰은 앞 프레임의 응답(ack)을 받은 뒤에 다음 프레임을 보낸다. stream은 vision 응답을 기다리는 중에 들어온 프레임을 버린다. 큐에 쌓지 않는다.</li>
-  <li><b>타임아웃 200ms</b>: ④⑤⑥ 각 요청이 200ms를 넘기면 그 프레임은 버린다.</li>
-  <li><b>손이 없을 때</b>: vision은 <code>hand: null</code>을 보내고, gesture는 펜을 든다(<code>action: "up"</code>).</li>
-  <li><b>좌표</b>: ⑤⑥의 좌표는 0~1로 정규화한다. 좌우 반전은 vision에서 한 번만 한다. 캔버스 크기에 맞춘 변환은 PC 브라우저에서 한다.</li>
-  <li><b>지연 측정</b>: stream이 프레임을 받은 시각을 <code>ts</code>(유닉스 ms)로 붙여 ⑥까지 그대로 전달한다. 서버와 PC 브라우저는 같은 PC에서 돌아 시계가 같으므로, PC 브라우저가 <code>Date.now() - ts</code>를 화면에 표시하면 서버 처리부터 화면 도착까지의 지연이 된다. 휴대폰→서버 전송 시간은 이 값에 들어가지 않는다.</li>
+  <li><b>최신 프레임만</b>: ack 뒤에 다음 프레임, 처리 중에 온 건 버린다.</li>
+  <li><b>타임아웃 200ms</b>: ④⑤⑥ 중 하나라도 넘기면 그 프레임은 버린다.</li>
+  <li><b>버린 이유</b>: ack의 <code>reason</code>으로 확인 (예: <code>vision_timeout</code>, <code>vision_502</code>).</li>
+  <li><b>손이 없을 때</b>: vision <code>hand: null</code> → gesture <code>up</code>.</li>
+  <li><b>좌표</b>: 0~1 정규화, 좌우 반전은 vision에서만, 캔버스 변환은 브라우저에서.</li>
+  <li><b>지연</b>: PC 화면에 <code>Date.now() - ts</code> 표시 (서버 처리 → 화면 도착).</li>
 </ul>
 
 <h2>실행 환경</h2>
 <ul>
-  <li>호스트에 여는 포트는 security의 443과 80(443으로 리다이렉트)이다. 8000~8004는 개발할 때만 <code>127.0.0.1</code>에 묶어서 연다.</li>
-  <li>휴대폰과 PC는 같은 Wi-Fi에 있어야 하고, Windows 방화벽에서 443 인바운드를 허용한다.</li>
-  <li>휴대폰 브라우저의 카메라(<code>getUserMedia</code>)는 HTTPS 페이지에서만 동작한다. 인증서는 PC 내부 IP로 만들고(mkcert 또는 자체 서명) <code>services/security/certs/</code>에 둔다. 인증서 파일은 커밋하지 않는다.</li>
-  <li>자체 서명 인증서는 휴대폰에서 "안전하지 않음" 화면이 나오고, 계속 진행하면 카메라를 쓸 수 있다.</li>
+  <li><b>열린 포트</b>: 443(휴대폰), 80(PC <code>localhost</code>). 8000~8004는 <code>127.0.0.1</code>에만.</li>
+  <li><b>네트워크</b>: 휴대폰과 PC는 같은 Wi-Fi.</li>
+  <li><b>방화벽</b>: Windows에서 443 인바운드 허용 (처음 한 번).</li>
+  <li><b>PC IP</b>: <code>.env</code>의 <code>SECURITY_CERT_HOST</code>. 비면 QR이 <code>localhost</code>라 휴대폰이 못 들어온다.</li>
+  <li><b>한 번에 실행</b>: <code>services/security/start-windows.bat</code> (IP 설정 + 전체 실행).</li>
+  <li><b>인증서</b>: 없으면 security가 자체 서명으로 만든다. 커밋하지 않는다.</li>
+  <li><b>인증서 경고</b>: 휴대폰은 처음 한 번 "계속", PC는 <code>http://localhost</code>라 경고 없음.</li>
 </ul>
 
 </div>

@@ -18,13 +18,15 @@ PC 그림판 페이지, QR 표시, gesture가 보낸 기능(`action`)을 PC 브�
 
 ## 혼자 테스트하기
 
-security 없이 web만 띄우면 페이지가 `/api/session` 대신 개발용 `sid`를 만들어 화면에 보여 준다.
+PC 그림판은 보통 security를 거친 `http://localhost`로 연다. web만 띄웠을 때는 `http://localhost:8000`으로 열고, 이때는 세션 API가 없어 페이지가 개발용 `sid`를 만들어 화면에 보여 준다 ("세션 API에 연결하지 못해…" 문구는 정상).
 
 ```bash
 docker compose up --build web
-# 브라우저로 http://localhost:8000 열기 → 화면의 세션 값 복사
+# 브라우저로 http://localhost:8000 (또는 전체를 띄웠으면 http://localhost) 열기 → 화면의 세션 값 복사
 python services/web/dev/fake_gesture.py --sid <세션>
 ```
+
+원 두 개가 그려지고(두 번째는 다른 색·굵게), 1초 뒤 두 번째 원이 취소되면 정상이다.
 
 다른 파트와 같은 `sid`로 맞추고 싶으면 `http://localhost:8000/?sid=test`처럼 주소에 붙인다 (세션 발급과 QR을 건너뛴다).
 
