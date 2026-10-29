@@ -18,7 +18,8 @@ TIMEOUT = 0.2  # docs/contracts: 내부 요청 타임아웃 200ms
 def config_from_env():
     c = logic.Config()
     c.mirror = os.environ.get("GESTURE_MIRROR", "0") == "1"
-    c.alpha = float(os.environ.get("GESTURE_ALPHA", c.alpha))
+    c.min_cutoff = float(os.environ.get("GESTURE_MIN_CUTOFF", c.min_cutoff))
+    c.beta = float(os.environ.get("GESTURE_BETA", c.beta))
     c.hold_frames = int(os.environ.get("GESTURE_HOLD_FRAMES", c.hold_frames))
     c.fist_hold_ms = int(os.environ.get("GESTURE_FIST_HOLD_MS", c.fist_hold_ms))
     c.send_landmarks = os.environ.get("GESTURE_SEND_LANDMARKS", "1") == "1"
