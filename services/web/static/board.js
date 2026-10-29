@@ -99,6 +99,7 @@ function savePng() {
 // ---------------------------------------------------------------- 손 좌표 표시
 // gesture가 프레임마다 보내는 action "landmarks"(params.points 21개, params.zone)를 그림판 위에 겹쳐 그린다.
 // 커서와 같게 zone을 캔버스 전체로 늘리므로 검지 끝이 커서 위치와 겹친다.
+// 손을 검지 끝 기준으로 줄여 그리면 검지만 움직여도 손바닥이 따라 들썩여서, 실제 크기로 그린다.
 // 표시 전용이라 그림·디버그 표시에는 영향을 주지 않는다.
 const handCanvas = $('hand');
 const hctx = handCanvas.getContext('2d');
@@ -109,14 +110,44 @@ const HAND_LINKS = [
   [9, 13], [13, 14], [14, 15], [15, 16],   // 약지
   [13, 17], [0, 17], [17, 18], [18, 19], [19, 20],  // 새끼·손바닥
 ];
+const HAND_TIP = 8;  // 검지 끝 (그리는 점)
 let handTimer = null;
 
-function drawHand(params) {
-  const points = params?.points ?? [];
+// 떨림 보정: 점마다 One Euro 필터 (https://gery.casiez.net/1euro/).
+// 느리게 움직일 때는 강하게, 빠르게 움직일 때는 약하게 보정해 떨림은 줄이고 따라오는 속도는 지킨다.
+// minCutoff를 낮추면 더 부드럽고(멈췄을 때 덜 떨림), beta를 높이면 빠른 움직임에 더 빨리 따라간다.
+const HAND_FILTER = { minCutoff: 0.5, beta: 10, dCutoff: 1.0 };
+const HAND_RESET_S = 0.5;  // 손이 이만큼 끊겼다 다시 보이면 보정을 처음부터 (이전 위치에서 미끄러져 오지 않게)
+let handFilters = null;    // 점 21개 × [x 필터, y 필터]
+let handLastT = 0;
+
+function oneEuro() {
+  let prev = null, dPrev = 0, tPrev = 0;
+  const alpha = (cutoff, dt) => 1 / (1 + 1 / (2 * Math.PI * cutoff * dt));
+  return (x, t) => {
+    if (prev === null) { prev = x; tPrev = t; return x; }
+    const dt = Math.max(t - tPrev, 1e-3);
+    dPrev += alpha(HAND_FILTER.dCutoff, dt) * ((x - prev) / dt - dPrev);
+    prev += alpha(HAND_FILTER.minCutoff + HAND_FILTER.beta * Math.abs(dPrev), dt) * (x - prev);
+    tPrev = t;
+    return prev;
+  };
+}
+
+function smoothHand(points, t) {
+  if (!handFilters || t - handLastT > HAND_RESET_S) handFilters = points.map(() => [oneEuro(), oneEuro()]);
+  handLastT = t;
+  return points.map(([x, y], i) => [handFilters[i][0](x, t), handFilters[i][1](y, t)]);
+}
+
+function drawHand(params, ts) {
+  const raw = params?.points ?? [];
   clearTimeout(handTimer);
-  if (points.length < 21) { handCanvas.hidden = true; return; }
+  if (raw.length < 21) { handCanvas.hidden = true; handFilters = null; return; }
   handTimer = setTimeout(() => { handCanvas.hidden = true; }, 1000);  // 메시지가 끊기면 지운다
   handCanvas.hidden = false;
+  // 시간은 stream이 프레임을 받은 시각(ts)을 쓴다. 네트워크 도착 간격이 흔들려도 보정이 일정하다
+  const points = smoothHand(raw, (ts ?? Date.now()) / 1000);
 
   const w = handCanvas.clientWidth, h = handCanvas.clientHeight;
   const dpr = window.devicePixelRatio || 1;
@@ -130,7 +161,7 @@ function drawHand(params) {
   const [lo, hi] = params.zone ?? [0, 1];
   const px = ([x, y]) => [(x - lo) / (hi - lo) * w, (y - lo) / (hi - lo) * h];
   hctx.strokeStyle = 'rgba(47, 158, 68, .55)';
-  hctx.lineWidth = 4;
+  hctx.lineWidth = 2.5;
   hctx.lineCap = 'round';
   hctx.beginPath();
   for (const [a, b] of HAND_LINKS) {
@@ -140,9 +171,9 @@ function drawHand(params) {
   hctx.stroke();
   points.forEach((p, i) => {
     const [x, y] = px(p);
-    hctx.fillStyle = i === 8 ? '#f76707' : 'rgba(33, 37, 41, .6)';  // 8: 검지 끝 (그리는 점)
+    hctx.fillStyle = i === HAND_TIP ? '#f76707' : 'rgba(33, 37, 41, .6)';
     hctx.beginPath();
-    hctx.arc(x, y, i === 8 ? 8 : 5, 0, Math.PI * 2);
+    hctx.arc(x, y, i === HAND_TIP ? 5 : 3, 0, Math.PI * 2);
     hctx.fill();
   });
 }
@@ -163,7 +194,7 @@ const ACTIONS = {
 };
 
 function onAction(m) {
-  if (m.action === 'landmarks') { drawHand(m.params); return; }
+  if (m.action === 'landmarks') { drawHand(m.params, m.ts); return; }
   $('dbg-gesture').textContent = m.gesture ?? '-';
   $('dbg-conf').textContent = m.confidence != null ? m.confidence.toFixed(2) : '-';
   $('dbg-action').textContent = m.action;
