@@ -1,0 +1,8 @@
+# Windows(CRLF)에서 만든 파일이 Linux 컨테이너 안에서 깨지지 않도록 줄바꿈을 LF로 고정한다.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+*.onnx binary
+*.pt binary

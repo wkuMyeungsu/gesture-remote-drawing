@@ -1,0 +1,59 @@
+# 서비스 1개 = 폴더 1개 = 컨테이너 1개.
+# 내 서비스만: docker compose up --build <서비스>   전체: docker compose up --build
+# 컨테이너끼리는 서비스 이름으로 부른다. 예: http://vision:8003  (localhost는 자기 자신)
+# 호스트 포트는 .env로 바꿀 수 있다 (.env.example 참고). .env가 없어도 기본값으로 뜬다.
+# 지금은 모두 /health만 답하는 뼈대다. security가 nginx(443)로 바뀌면 바깥에 여는 포트는 443만 남긴다 (docs/architecture.html).
+name: gesture-remote-drawing
+
+x-python-service: &python-service
+  restart: unless-stopped
+  env_file:
+    - path: .env
+      required: false
+  healthcheck:
+    test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ['PORT'])"]
+    interval: 10s
+    timeout: 3s
+    retries: 5
+    start_period: 5s
+
+services:
+  web:
+    <<: *python-service
+    build: ./services/web
+    ports: ["${WEB_PORT:-8000}:8000"]
+    environment:
+      SERVICE_NAME: web
+      PORT: "8000"
+
+  security:
+    <<: *python-service
+    build: ./services/security
+    ports: ["${SECURITY_PORT:-8001}:8001"]
+    environment:
+      SERVICE_NAME: security
+      PORT: "8001"
+
+  stream:
+    <<: *python-service
+    build: ./services/stream
+    ports: ["${STREAM_PORT:-8002}:8002"]
+    environment:
+      SERVICE_NAME: stream
+      PORT: "8002"
+
+  vision:
+    <<: *python-service
+    build: ./services/vision
+    ports: ["${VISION_PORT:-8003}:8003"]
+    environment:
+      SERVICE_NAME: vision
+      PORT: "8003"
+
+  gesture:
+    <<: *python-service
+    build: ./services/gesture
+    ports: ["${GESTURE_PORT:-8004}:8004"]
+    environment:
+      SERVICE_NAME: gesture
+      PORT: "8004"

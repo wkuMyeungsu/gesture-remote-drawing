@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>시스템 구조도</title>
+<style>
+:root{--bg:#eceff1;--paper:#fff;--ink:#111;--muted:#555;--rule:#111;--thin:#b8bec4;--code:#f3f4f5;--net:#e8f0f8;--todo:#b26a00}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.7 system-ui,"Malgun Gothic",sans-serif}
+.doc{max-width:860px;margin:24px auto;background:var(--paper);border:2px solid var(--rule);padding:0 22px 28px}
+@media (max-width:640px){.doc{margin:0;border-width:0 0 2px}}
+code{font-family:ui-monospace,Consolas,monospace;font-size:.9em;background:var(--code);padding:1px 5px;border:1px solid var(--thin)}
+h1{margin:0;padding:18px 0 4px;font-size:26px}
+.sub{color:var(--muted);margin:0 0 8px}
+h2{margin:26px 0 10px;padding:6px 10px;background:var(--ink);color:var(--paper);font-size:16px}
+.tw{overflow-x:auto;margin:8px 0}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{border:1px solid var(--rule);padding:5px 9px;text-align:left;vertical-align:top}
+th{background:var(--code);font-weight:600;white-space:nowrap}
+.todo{color:var(--todo);font-weight:700}
+ol,ul{padding-left:22px}
+li{margin:3px 0}
+.graph{overflow-x:auto;border:1px solid var(--rule);background:var(--code);padding:6px}
+.graph svg{display:block;width:100%;min-width:640px;height:auto}
+.graph text{font-family:system-ui,"Malgun Gothic",sans-serif;fill:var(--ink)}
+.graph .box{fill:var(--paper);stroke:var(--ink);stroke-width:2}
+.graph .ext{fill:var(--paper);stroke:var(--ink);stroke-width:2;stroke-dasharray:2 3}
+.graph .net{fill:var(--net);stroke:var(--thin);stroke-width:1.5}
+.graph .ln{fill:none;stroke:var(--ink);stroke-width:2;marker-end:url(#arr)}
+.graph .both{marker-start:url(#arr)}
+.graph .n{font-weight:700;font-size:13px}
+.graph .t{font-size:12px;fill:var(--muted)}
+.graph .halo{stroke:var(--code);stroke-width:4;paint-order:stroke}
+.legend{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:13px;margin:8px 0 0}
+.legend svg{vertical-align:-3px}
+</style>
+</head>
+<body>
+<div class="doc">
+
+<h1>시스템 구조도</h1>
+<p class="sub">실시간 손동작 인식 원격 그림판의 컨테이너 5개와 기기 사이의 연결. 기준: 2026-10-29, 제안 단계 (구현 전). 지금 저장소의 서비스는 모두 <code>/health</code>만 답하는 뼈대다.</p>
+
+<h2>구조</h2>
+<div class="graph">
+<svg viewBox="0 0 800 560" role="img" aria-label="휴대폰과 PC 브라우저가 security를 거쳐 stream, vision, gesture, web 컨테이너로 연결되는 구조도">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--ink)"/></marker>
+  </defs>
+
+  <rect class="net" x="230" y="10" width="560" height="540" rx="6"/>
+  <text class="t" x="782" y="540" text-anchor="end">Docker 네트워크 · 서비스 이름으로 호출</text>
+
+  <rect class="ext" x="20" y="44" width="170" height="60" rx="4"/>
+  <text class="n" x="105" y="70" text-anchor="middle">휴대폰</text>
+  <text class="t" x="105" y="90" text-anchor="middle">카메라 페이지</text>
+
+  <rect class="ext" x="20" y="420" width="170" height="60" rx="4"/>
+  <text class="n" x="105" y="446" text-anchor="middle">PC 브라우저</text>
+  <text class="t" x="105" y="466" text-anchor="middle">QR · 그림판 화면</text>
+
+  <rect class="box" x="260" y="226" width="200" height="90" rx="4"/>
+  <text class="n" x="360" y="254" text-anchor="middle">1 security :443</text>
+  <text class="t" x="360" y="276" text-anchor="middle">nginx (TLS · 라우팅)</text>
+  <text class="t" x="360" y="296" text-anchor="middle">+ 세션 API :8001</text>
+
+  <rect class="box" x="550" y="44" width="200" height="60" rx="4"/>
+  <text class="n" x="650" y="70" text-anchor="middle">2 stream :8002</text>
+  <text class="t" x="650" y="90" text-anchor="middle">카메라 페이지 · 프레임 수신</text>
+
+  <rect class="box" x="550" y="184" width="200" height="60" rx="4"/>
+  <text class="n" x="650" y="210" text-anchor="middle">3 vision :8003</text>
+  <text class="t" x="650" y="230" text-anchor="middle">전처리 · 손 좌표 21개</text>
+
+  <rect class="box" x="550" y="324" width="200" height="60" rx="4"/>
+  <text class="n" x="650" y="350" text-anchor="middle">4 gesture :8004</text>
+  <text class="t" x="650" y="370" text-anchor="middle">보정 · 동작 판별 · 명령</text>
+
+  <rect class="box" x="550" y="464" width="200" height="60" rx="4"/>
+  <text class="n" x="650" y="490" text-anchor="middle">0 web :8000</text>
+  <text class="t" x="650" y="510" text-anchor="middle">그림판 페이지 · 명령 중계</text>
+
+  <!-- ① 휴대폰 ↔ security -->
+  <path class="ln both" d="M192 74H310V224"/>
+  <text class="n halo" x="250" y="66" text-anchor="middle">①</text>
+  <text class="t halo" x="322" y="150">HTTPS · WSS</text>
+
+  <!-- ② PC 브라우저 ↔ security -->
+  <path class="ln both" d="M192 450H310V318"/>
+  <text class="n halo" x="250" y="442" text-anchor="middle">②</text>
+  <text class="t halo" x="322" y="390">HTTPS · WSS</text>
+
+  <!-- ③ security → stream -->
+  <path class="ln both" d="M462 246H500V74H548"/>
+  <text class="n halo" x="512" y="160">③</text>
+  <text class="t halo" x="494" y="66" text-anchor="end">/m/ · /ws/stream</text>
+
+  <!-- ④ stream → vision -->
+  <path class="ln" d="M650 104V182"/>
+  <text class="n halo" x="662" y="148">④</text>
+  <text class="t halo" x="680" y="148">POST /frames</text>
+
+  <!-- ⑤ vision → gesture -->
+  <path class="ln" d="M650 244V322"/>
+  <text class="n halo" x="662" y="288">⑤</text>
+  <text class="t halo" x="680" y="288">POST /landmarks</text>
+
+  <!-- ⑥ gesture → web -->
+  <path class="ln" d="M650 384V462"/>
+  <text class="n halo" x="662" y="428">⑥</text>
+  <text class="t halo" x="680" y="428">POST /commands</text>
+
+  <!-- ⑦ security ↔ web -->
+  <path class="ln both" d="M462 296H500V494H548"/>
+  <text class="n halo" x="512" y="400">⑦</text>
+  <text class="t halo" x="494" y="490" text-anchor="end">/ · /ws/board</text>
+
+  <!-- ⑧ stream → web -->
+  <path class="ln" d="M750 74H772V494H752"/>
+  <text class="n halo" x="772" y="290" text-anchor="middle">⑧</text>
+</svg>
+</div>
+<div class="legend">
+  <span><svg width="30" height="12"><line x1="1" y1="6" x2="29" y2="6" stroke="currentColor" stroke-width="2"/></svg> 한 방향 요청</span>
+  <span><svg width="30" height="12"><rect x="1" y="1" width="28" height="10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 3"/></svg> 컨테이너 밖 (사용자 기기)</span>
+  <span>양쪽 화살표: 프록시 또는 WebSocket (양방향)</span>
+</div>
+
+<h2>서비스</h2>
+<div class="tw"><table>
+  <tr><th>번호</th><th>서비스</th><th>포트</th><th>하는 일</th><th>가진 상태</th><th>담당</th></tr>
+  <tr><td>0</td><td><code>web</code></td><td>8000</td><td>PC 그림판 페이지 제공, QR 표시, 캔버스 그리기, 실행 취소·PNG 저장(브라우저 안), ⑥ 명령을 PC 브라우저로 WebSocket 중계</td><td>세션별 PC 화면 연결</td><td>박명수</td></tr>
+  <tr><td>1</td><td><code>security</code></td><td>443 (nginx)<br>8001 (세션 API)</td><td>HTTPS 종료, 경로별 라우팅, QR 세션 발급, <code>auth_request</code>로 휴대폰 요청 검사</td><td>세션 목록, 1회용 토큰</td><td>김도은</td></tr>
+  <tr><td>2</td><td><code>stream</code></td><td>8002</td><td>휴대폰 카메라 페이지 제공, WebSocket으로 프레임 수신, 해상도·fps·압축 조절, vision으로 전달</td><td>세션별 처리 중 여부</td><td>임우진</td></tr>
+  <tr><td>3</td><td><code>vision</code></td><td>8003</td><td>JPEG 디코딩, 좌우 반전, MediaPipe Hands로 손 좌표 21개 추출</td><td>없음 (여러 개로 늘릴 수 있음)</td><td>이진아</td></tr>
+  <tr><td>4</td><td><code>gesture</code></td><td>8004</td><td>좌표 흔들림 보정, 동작 판별(그리기·이동·지우기·색 변경), 명령 생성</td><td>세션별 이전 좌표, 펜 상태, 필터 값</td><td>김대희</td></tr>
+</table></div>
+
+<h2>연결</h2>
+<div class="tw"><table>
+  <tr><th>번호</th><th>보내는 쪽 → 받는 쪽</th><th>주소</th><th>내용</th></tr>
+  <tr><td>①</td><td>휴대폰 ↔ security</td><td><code>https://&lt;PC IP&gt;/m/?token=…</code><br><code>wss://&lt;PC IP&gt;/ws/stream</code></td><td>카메라 페이지 요청, 프레임 전송과 응답(ack)</td></tr>
+  <tr><td>②</td><td>PC 브라우저 ↔ security</td><td><code>https://&lt;PC IP&gt;/</code><br><code>POST /api/session</code><br><code>wss://&lt;PC IP&gt;/ws/board?sid=…</code></td><td>그림판 페이지, 세션 발급, 그리기 명령 수신</td></tr>
+  <tr><td>③</td><td>security → stream</td><td><code>http://stream:8002</code></td><td>①을 프록시. 인증된 세션 ID를 <code>X-Session-Id</code> 헤더로 붙여 전달</td></tr>
+  <tr><td>④</td><td>stream → vision</td><td><code>POST http://vision:8003/frames</code></td><td>JPEG 한 장과 세션·프레임 번호·촬영 시각</td></tr>
+  <tr><td>⑤</td><td>vision → gesture</td><td><code>POST http://gesture:8004/landmarks</code></td><td>손 좌표 21개(0~1 정규화) 또는 손 없음</td></tr>
+  <tr><td>⑥</td><td>gesture → web</td><td><code>POST http://web:8000/commands</code></td><td>그리기·이동·지우기·색 변경 명령과 좌표(0~1)</td></tr>
+  <tr><td>⑦</td><td>security → web</td><td><code>http://web:8000</code></td><td>②를 프록시</td></tr>
+  <tr><td>⑧</td><td>stream → web</td><td><code>POST http://web:8000/events</code></td><td>휴대폰 연결·끊김 알림</td></tr>
+</table></div>
+<p>각 연결의 메시지 형식: <code>docs/contracts/README.md</code>.</p>
+
+<h2>security 라우팅</h2>
+<div class="tw"><table>
+  <tr><th>경로</th><th>보내는 곳</th><th>인증</th></tr>
+  <tr><td><code>/</code>, <code>/ws/board</code></td><td><code>web:8000</code></td><td>없음</td></tr>
+  <tr><td><code>/api/session</code></td><td>세션 API <code>127.0.0.1:8001</code></td><td>없음</td></tr>
+  <tr><td><code>/m/</code></td><td><code>stream:8002</code></td><td><code>auth_request</code> — 1회용 토큰 확인 후 <code>sid</code> 쿠키 발급, 토큰 폐기</td></tr>
+  <tr><td><code>/ws/stream</code></td><td><code>stream:8002</code></td><td><code>auth_request</code> — <code>sid</code> 쿠키 확인</td></tr>
+  <tr><td><code>/auth</code></td><td>세션 API <code>127.0.0.1:8001</code></td><td>nginx 내부 전용 (<code>internal</code>)</td></tr>
+</table></div>
+<p>세션 API가 <code>/auth</code> 응답 헤더에 <code>X-Session-Id</code>를 담으면 nginx가 <code>auth_request_set</code>으로 받아 stream에 넘긴다. stream은 이 헤더만 믿고 클라이언트가 보낸 값은 쓰지 않는다.</p>
+
+<h2>페어링 순서</h2>
+<ol>
+  <li>PC 브라우저가 <code>https://&lt;PC IP&gt;/</code>를 열면 web이 그림판 페이지를 준다.</li>
+  <li>페이지가 <code>POST /api/session</code>을 보내 <code>sid</code>와 1회용 <code>token</code>(유효 60초)을 받는다.</li>
+  <li>페이지가 <code>https://&lt;PC IP&gt;/m/?token=…</code>을 QR로 표시하고, <code>/ws/board?sid=…</code>로 WebSocket을 연다.</li>
+  <li>휴대폰이 QR을 스캔해 <code>/m/</code>에 접속한다. security가 토큰을 확인하고 <code>sid</code> 쿠키를 발급한 뒤 토큰을 폐기한다.</li>
+  <li>휴대폰 카메라 페이지가 <code>/ws/stream</code>을 열고, stream이 web에 <code>connected</code> 이벤트(⑧)를 보낸다. PC 화면은 QR을 닫고 그림판을 띄운다.</li>
+  <li>휴대폰이 프레임을 보내기 시작한다 (①→③→④→⑤→⑥→⑦→②).</li>
+</ol>
+
+<h2>처리 규칙</h2>
+<ul>
+  <li><b>최신 프레임만 처리</b>: 휴대폰은 앞 프레임의 응답(ack)을 받은 뒤에 다음 프레임을 보낸다. stream은 vision 응답을 기다리는 중에 들어온 프레임을 버린다. 큐에 쌓지 않는다.</li>
+  <li><b>타임아웃 200ms</b>: ④⑤⑥ 각 요청이 200ms를 넘기면 그 프레임은 버린다.</li>
+  <li><b>손이 없을 때</b>: vision은 <code>hand: null</code>을 보내고, gesture는 펜을 든다(<code>cmd: "up"</code>).</li>
+  <li><b>좌표</b>: ⑤⑥의 좌표는 0~1로 정규화한다. 좌우 반전은 vision에서 한 번만 한다. 캔버스 크기에 맞춘 변환은 PC 브라우저에서 한다.</li>
+  <li><b>지연 측정</b>: stream이 프레임을 받은 시각을 <code>ts</code>(유닉스 ms)로 붙여 ⑥까지 그대로 전달한다. 서버와 PC 브라우저는 같은 PC에서 돌아 시계가 같으므로, PC 브라우저가 <code>Date.now() - ts</code>를 화면에 표시하면 서버 처리부터 화면 도착까지의 지연이 된다. 휴대폰→서버 전송 시간은 이 값에 들어가지 않는다.</li>
+</ul>
+
+<h2>실행 환경</h2>
+<ul>
+  <li>호스트에 여는 포트는 security의 443과 80(443으로 리다이렉트)이다. 8000~8004는 개발할 때만 <code>127.0.0.1</code>에 묶어서 연다.</li>
+  <li>휴대폰과 PC는 같은 Wi-Fi에 있어야 하고, Windows 방화벽에서 443 인바운드를 허용한다.</li>
+  <li>휴대폰 브라우저의 카메라(<code>getUserMedia</code>)는 HTTPS 페이지에서만 동작한다. 인증서는 PC 내부 IP로 만들고(mkcert 또는 자체 서명) <code>services/security/certs/</code>에 둔다. 인증서 파일은 커밋하지 않는다.</li>
+  <li>자체 서명 인증서는 휴대폰에서 "안전하지 않음" 화면이 나오고, 계속 진행하면 카메라를 쓸 수 있다.</li>
+</ul>
+
+</div>
+</body>
+</html>

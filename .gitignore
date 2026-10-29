@@ -1,0 +1,29 @@
+# 비밀값
+.env
+*.pem
+*.key
+*.crt
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+node_modules/
+
+# 모델 가중치·캡처 이미지 (용량 큼)
+*.pt
+*.pth
+*.onnx
+data/
+frames/
+
+# OS·편집기
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
