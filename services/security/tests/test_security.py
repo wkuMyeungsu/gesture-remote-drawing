@@ -23,6 +23,13 @@ def clock():
     return Clock()
 
 
+@pytest.fixture(autouse=True)
+def clean_env(monkeypatch):
+    """컨테이너에는 .env의 SECURITY_* 값이 들어 있으므로, 테스트는 기본값에서 시작한다."""
+    for name in ("SECURITY_PUBLIC_HOST", "SECURITY_CERT_HOST", "SECURITY_MAX_SESSIONS"):
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture
 def client(clock):
     with TestClient(app, base_url="https://192.168.0.12") as c:
