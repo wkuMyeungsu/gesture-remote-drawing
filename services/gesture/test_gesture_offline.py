@@ -123,20 +123,21 @@ def run_scenarios():
     expected_x = logic.to_canvas(0.5 - 0.2 - 0.04, 0.15, 0.85)
     results.append(check("smoothing reset after loss", abs(cmds[0]["x"] - expected_x) < 1e-3, cmds[0]))
 
-    # 8. 주먹 1초 유지 → clear 정확히 한 번
+    # 8. 주먹 2초 유지 → clear 정확히 한 번
+    hold = logic.Config().fist_hold_ms * FPS // 1000  # 2초 = 30프레임
     r = Runner()
     r.feed("index_up", 6)
     fist_start = r.frame
-    cmds = r.feed("fist", 2 * FPS)
+    cmds = r.feed("fist", hold + FPS)
     acts = actions(cmds)
     results.append(check("fist sends up once and clear once", acts.count("clear") == 1 and acts.count("up") == 1, acts))
     clear_frame = next((c["frame_id"] for c in cmds if c["action"] == "clear"), -1)
-    results.append(check("clear ~1s after fist first appears", FPS <= clear_frame - fist_start <= FPS + 2, clear_frame - fist_start))
+    results.append(check("clear ~2s after fist first appears", hold <= clear_frame - fist_start <= hold + 2, clear_frame - fist_start))
 
-    # 9. 짧은 주먹은 clear를 보내지 않는다
+    # 9. 2초가 안 된 주먹은 clear를 보내지 않는다 (1.5초까지 쥐었다 펴기)
     r = Runner()
-    cmds = r.feed("fist", FPS // 2) + r.feed("index_up", 6)
-    results.append(check("short fist does not clear", "clear" not in actions(cmds), actions(cmds)))
+    cmds = r.feed("fist", hold * 3 // 4) + r.feed("index_up", 6)
+    results.append(check("fist shorter than 2s does not clear", "clear" not in actions(cmds), actions(cmds)))
 
     # 10. 세션끼리 상태가 섞이지 않는다
     store = logic.SessionStore(config=logic.Config())

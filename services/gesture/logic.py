@@ -48,7 +48,7 @@ class Config:
     pinch_off: float = 0.45      # 맞닿은 뒤에는 45%를 넘어야 떨어진 것으로 본다
     hold_frames: int = 4         # 새 동작은 연속 N프레임 보여야 인정
     lost_grace_frames: int = 3   # 손이 이만큼 연속으로 안 보여야 획을 끝낸다
-    fist_hold_ms: int = 1000     # 주먹을 이만큼 유지해야 fist_hold (clear)
+    fist_hold_ms: int = 2000     # 주먹을 이만큼 유지해야 fist_hold (clear). 실수로 지우지 않게 2초
     send_landmarks: bool = False # 프레임마다 손 좌표 21개를 action "landmarks"로 보낸다 (그림판 표시용)
 
 
