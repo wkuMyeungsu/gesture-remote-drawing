@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>손동작 기능표</title>
+<style>
+:root{--bg:#eceff1;--paper:#fff;--ink:#111;--muted:#555;--rule:#111;--thin:#b8bec4;--code:#f3f4f5;--off:#9aa0a6}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.7 system-ui,"Malgun Gothic",sans-serif}
+.doc{max-width:860px;margin:24px auto;background:var(--paper);border:2px solid var(--rule);padding:0 22px 28px}
+@media (max-width:640px){.doc{margin:0;border-width:0 0 2px;padding:0 16px 24px}}
+code{font-family:ui-monospace,Consolas,monospace;font-size:.9em;background:var(--code);padding:1px 5px;border:1px solid var(--thin)}
+h1{margin:0;padding:18px 0 4px;font-size:26px}
+.sub{color:var(--muted);margin:0 0 8px}
+h2{margin:26px 0 10px;padding:6px 10px;background:var(--ink);color:var(--paper);font-size:16px}
+.tw{overflow-x:auto;margin:8px 0}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{border:1px solid var(--rule);padding:6px 9px;text-align:left;vertical-align:middle}
+th{background:var(--code);font-weight:600;white-space:nowrap}
+.hand{font-size:26px;text-align:center;width:52px}
+.off{color:var(--off)}
+ul{padding-left:22px}
+li{margin:3px 0}
+</style>
+</head>
+<body>
+<div class="doc">
+
+<h1>손동작 기능표</h1>
+<p class="sub">휴대폰 카메라에 보이는 손 모양 → PC 그림판에서 실행되는 기능<br>
+기준 2026-10-29 · <code>services/gesture/mapping.json</code> · <code>services/web/static/board.js</code></p>
+
+<h2>손 모양 → 기능</h2>
+<div class="tw"><table>
+  <tr><th></th><th>손 모양</th><th>기능</th><th>화면에서</th></tr>
+  <tr><td class="hand">☝️</td><td>검지만 펴기<br><code>index_up</code></td><td>그리기<br><code>draw</code></td><td>검지 끝을 따라 선이 그려짐</td></tr>
+  <tr><td class="hand">✌️</td><td>검지 + 중지 펴기<br><code>two_fingers</code></td><td>지우개<br><code>erase</code></td><td>검지 끝이 지나간 자리를 지움 (30px)</td></tr>
+  <tr><td class="hand">🖐️</td><td>손가락 4개 모두 펴기<br><code>open_palm</code></td><td>커서 이동<br><code>hover</code></td><td>그리지 않고 커서만 움직임</td></tr>
+  <tr><td class="hand">✊</td><td>주먹<br><code>fist</code></td><td>펜 들기<br><code>up</code></td><td>선을 끊고 커서를 숨김 (손 뼈대는 보임)</td></tr>
+  <tr><td class="hand">✊⏱</td><td>주먹 1초 유지<br><code>fist_hold</code></td><td>전체 지우기<br><code>clear</code></td><td>캔버스를 비움 (한 번만)</td></tr>
+  <tr><td class="hand">∅</td><td>손이 안 보임<br><code>none</code></td><td>펜 들기<br><code>up</code></td><td>선을 끊고 커서·손 뼈대를 숨김</td></tr>
+</table></div>
+
+<h2>손 모양 없이 남아 있는 기능</h2>
+<p>web에는 구현돼 있지만 아직 짝지은 손 모양이 없어 손으로는 실행할 수 없다.</p>
+<div class="tw"><table>
+  <tr><th>기능</th><th>화면에서</th></tr>
+  <tr><td class="off">실행 취소 <code>undo</code></td><td>마지막 획(지우개 획 포함) 취소</td></tr>
+  <tr><td class="off">다음 색 <code>next_color</code></td><td>검정 → 빨강 → 파랑 → 초록 → 주황 → 보라</td></tr>
+  <tr><td class="off">굵게 / 가늘게 <code>size_up</code> <code>size_down</code></td><td>2 · 4 · 8 · 14 · 22px 중 한 단계</td></tr>
+  <tr><td class="off">저장 <code>save</code></td><td>캔버스를 PNG로 내려받기</td></tr>
+</table></div>
+<p>짝을 추가하려면 gesture가 새 손 모양을 판별하고 <code>mapping.json</code>에 한 줄 넣는다 (web 수정 없음).</p>
+
+<h2>판별 규칙</h2>
+<ul>
+  <li><b>엄지는 보지 않는다</b>: 검지·중지·약지·새끼 4개가 펴졌는지만 본다.</li>
+  <li><b>4프레임 확인</b>: 같은 손 모양이 연속 4프레임(약 0.3초) 보여야 바뀐다.</li>
+  <li><b>모르는 모양</b>: 표에 없는 모양(예: 중지만)은 직전 동작을 이어 간다.</li>
+  <li><b>손이 잠깐 사라짐</b>: 3프레임까지는 기다리고, 그 뒤에 펜을 든다.</li>
+  <li><b>한 번만 실행</b>: 펜 들기·전체 지우기는 손 모양이 바뀔 때 한 번만 실행된다.</li>
+  <li><b>그리는 영역</b>: 카메라 화면 가운데 70%가 캔버스 전체에 대응한다.</li>
+</ul>
+
+<h2>화면 표시</h2>
+<ul>
+  <li><b>펜 커서</b>: 그리기는 채운 원, 커서 이동은 빈 원, 지우개는 점선 원.</li>
+  <li><b>손 뼈대</b>: 손이 보이는 동안 초록 선과 점 21개, 검지 끝은 주황색.</li>
+  <li><b>표시줄</b>: 맨 위에 판별한 동작 · 신뢰도 · 기능 · 지연(ms).</li>
+</ul>
+
+<h2>바꾸는 곳</h2>
+<div class="tw"><table>
+  <tr><th>하고 싶은 일</th><th>고치는 곳</th><th>담당</th></tr>
+  <tr><td>손 모양과 기능의 짝 바꾸기</td><td><code>services/gesture/mapping.json</code></td><td>gesture</td></tr>
+  <tr><td>새 손 모양 추가</td><td><code>services/gesture/logic.py</code> + <code>mapping.json</code></td><td>gesture</td></tr>
+  <tr><td>새 기능 추가</td><td><code>docs/contracts/README.md</code>의 <code>action</code> 표 → web 구현 → <code>mapping.json</code></td><td>gesture · web</td></tr>
+</table></div>
+
+</div>
+</body>
+</html>
