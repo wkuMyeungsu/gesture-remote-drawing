@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>손동작 원격 그림판</title>
+  <link rel="stylesheet" href="/static/board.css">
+</head>
+<body>
+  <header class="bar">
+    <strong>손동작 원격 그림판</strong>
+    <span id="ws-state" class="pill off">서버 연결 중</span>
+    <span id="phone-state" class="pill off">휴대폰 대기</span>
+    <span class="tool">펜 <i id="pen-color" class="swatch"></i> <b id="pen-size"></b>px</span>
+    <span class="debug">
+      동작 <b id="dbg-gesture">-</b> (<b id="dbg-conf">-</b>)
+      · 기능 <b id="dbg-action">-</b>
+      · 지연 <b id="dbg-latency">-</b>ms
+    </span>
+    <button id="btn-pair" type="button">QR 다시 보기</button>
+  </header>
+
+  <main id="stage">
+    <canvas id="board"></canvas>
+    <div id="cursor" hidden></div>
+  </main>
+
+  <section id="pair" class="pair">
+    <div class="pair-card">
+      <h1>휴대폰으로 QR을 스캔하세요</h1>
+      <img id="pair-qr" alt="페어링 QR" hidden>
+      <p id="pair-msg"></p>
+      <p class="sid">세션 <code id="pair-sid">-</code></p>
+      <div class="pair-buttons">
+        <button id="btn-renew" type="button">새 QR 받기</button>
+        <button id="btn-close" type="button">닫기</button>
+      </div>
+    </div>
+  </section>
+
+  <script src="/static/board.js"></script>
+</body>
+</html>
