@@ -144,20 +144,23 @@ function smoothHand(points, t) {
 // 손가락을 접어도 길이가 그대로라 주먹일 때도 같은 기준이다. 기준값은 추정치라 표시줄의 "손 크기"를 보며 고친다.
 const FRAME = { w: 320, h: 240 };             // stream이 보내는 프레임 크기 (점의 x는 가로, y는 세로 기준 0~1)
 const HAND_SIZE = { near: 0.25, far: 0.08 };  // near보다 크면 너무 가까움, far보다 작으면 너무 멂
-const HAND_EDGE = [0, 5, 9, 13, 17];          // 손목·손가락 뿌리. 가장자리(0·1)에 붙으면 손이 화면 밖으로 나간 것
+// gesture의 at_edge와 같은 기준: 판별에 쓰는 점(손목, 손가락 마디·끝)이 테두리 2% 안이면
+// gesture가 그 프레임을 판별하지 않으므로 같은 때 안내를 띄운다
+const HAND_EDGE = { points: [0, 6, 8, 10, 12, 14, 16, 18, 20], margin: 0.02 };
 const GUIDE_HOLD = 5;                         // 같은 상태가 이만큼(프레임) 이어져야 안내를 바꾼다 (경계에서 깜빡이지 않게)
 const GUIDE_TEXT = {
   near: '조금 뒤로 가 주세요',
   far: '조금 가까이 와 주세요',
-  edge: '손이 카메라 밖으로 나갔어요',
+  edge: '손을 화면 안쪽으로 옮겨 주세요',
 };
 const guide = { state: null, candidate: null, count: 0 };
 
 function handGuide(raw, points) {
   const size = Math.hypot((points[9][0] - points[0][0]) * FRAME.w, (points[9][1] - points[0][1]) * FRAME.h) / FRAME.h;
   $('dbg-hand').textContent = size.toFixed(2);
-  // vision이 화면 밖 점을 0·1로 자르므로, 보정 전 좌표로 가장자리에 붙었는지 본다
-  const edge = HAND_EDGE.some((i) => raw[i].slice(0, 2).some((v) => v <= 0.001 || v >= 0.999));
+  // gesture처럼 보정 전 좌표로 본다
+  const { points: edgePoints, margin } = HAND_EDGE;
+  const edge = edgePoints.some((i) => raw[i].slice(0, 2).some((v) => v < margin || v > 1 - margin));
   const state = size > HAND_SIZE.near ? 'near' : edge ? 'edge' : size < HAND_SIZE.far ? 'far' : null;
   if (state === guide.state) { guide.count = 0; return; }
   guide.count = state === guide.candidate ? guide.count + 1 : 1;
@@ -199,7 +202,7 @@ function drawHand(params, ts) {
 
   const [lo, hi] = params.zone ?? [0, 1];
   const px = ([x, y]) => [(x - lo) / (hi - lo) * w, (y - lo) / (hi - lo) * h];
-  hctx.globalAlpha = guide.state === 'edge' ? 0.35 : 1;  // 화면 밖으로 나간 손은 점이 찌그러지므로 흐리게
+  hctx.globalAlpha = guide.state === 'edge' ? 0.35 : 1;  // 가장자리에 걸린 손은 판별하지 않고 점도 찌그러지므로 흐리게
   hctx.strokeStyle = 'rgba(47, 158, 68, .55)';
   hctx.lineWidth = 2.5;
   hctx.lineCap = 'round';
