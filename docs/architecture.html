@@ -73,7 +73,7 @@ li{margin:3px 0}
 
   <rect class="box" x="550" y="184" width="200" height="60" rx="4"/>
   <text class="n" x="650" y="210" text-anchor="middle">3 vision :8003</text>
-  <text class="t" x="650" y="230" text-anchor="middle">전처리 · 손 좌표 21개</text>
+  <text class="t" x="650" y="230" text-anchor="middle">전처리 · 손 추적 · 좌표 21개</text>
 
   <rect class="box" x="550" y="324" width="200" height="60" rx="4"/>
   <text class="n" x="650" y="350" text-anchor="middle">4 gesture :8004</text>
@@ -132,22 +132,22 @@ li{margin:3px 0}
 <h2>서비스</h2>
 <div class="tw"><table>
   <tr><th>번호</th><th>서비스</th><th>포트</th><th>하는 일</th><th>가진 상태</th><th>담당</th></tr>
-  <tr><td>0</td><td><code>web</code></td><td>8000</td><td>그림판 페이지 · QR 표시<br>⑥ <code>action</code>을 PC 브라우저로 중계<br>브라우저에서 기능 실행</td><td>PC 화면 연결 (세션별)<br>도구·색·굵기 (브라우저)</td><td>박명수</td></tr>
+  <tr><td>0</td><td><code>web</code></td><td>8000</td><td>그림판 페이지 · QR 표시<br>⑥ <code>action</code>을 PC 브라우저로 중계<br>브라우저에서 기능 실행<br>손 뼈대 · 거리 안내 표시<br>마우스 그리기 도구 (손 우선)</td><td>PC 화면 연결 (세션별)<br>도구·색·굵기 (브라우저)<br>획 목록 · 실행 취소 기록 (브라우저, 손·마우스 공유)</td><td>박명수</td></tr>
   <tr><td>1</td><td><code>security</code></td><td>443 nginx<br>80 PC 전용<br>8001 세션 API</td><td>HTTPS · 경로별 라우팅<br>QR 세션 발급 · 휴대폰 인증<br>내부 전용 경로 차단</td><td>세션 목록<br>1회용 토큰</td><td>김도은</td></tr>
-  <tr><td>2</td><td><code>stream</code></td><td>8002</td><td>휴대폰 카메라 페이지<br>프레임 수신 → vision 전달<br>연결·끊김 알림</td><td>세션별 처리 중 여부</td><td>임우진</td></tr>
-  <tr><td>3</td><td><code>vision</code></td><td>8003</td><td>JPEG 디코딩 · 좌우 반전<br>MediaPipe Hands로 손 좌표 21개</td><td>없음 (늘릴 수 있음)</td><td>이진아</td></tr>
-  <tr><td>4</td><td><code>gesture</code></td><td>8004</td><td>좌표 흔들림 보정<br>동작(<code>gesture</code>) 판별<br>대응표로 <code>action</code> 결정</td><td>이전 좌표 · 펜 상태 (세션별)</td><td>김대희</td></tr>
+  <tr><td>2</td><td><code>stream</code></td><td>8002</td><td>휴대폰 카메라 페이지 (320×240 고정, 그림판 영역 표시)<br>프레임 수신 → vision 전달<br>연결·끊김 알림</td><td>세션별 처리 중 여부</td><td>임우진</td></tr>
+  <tr><td>3</td><td><code>vision</code></td><td>8003</td><td>JPEG 디코딩 · 좌우 반전<br>MediaPipe Hands로 손 좌표 21개<br>손이 여럿이면 앞 프레임 손에 가까운 손 하나</td><td>손 추적기 (세션별, 최대 4개, 30초 쉬면 정리)</td><td>이진아</td></tr>
+  <tr><td>4</td><td><code>gesture</code></td><td>8004</td><td>검지 끝 떨림 보정 (One Euro)<br>그림판 영역 → 캔버스 좌표<br>동작(<code>gesture</code>) 판별<br>대응표로 <code>action</code> 결정<br>손 좌표 21개 전달 (표시용)</td><td>보정 필터 · 현재 동작 · 진행 중인 획 · 주먹 시작 시각 (세션별)</td><td>김대희</td></tr>
 </table></div>
 
 <h2>연결</h2>
 <div class="tw"><table>
   <tr><th>번호</th><th>보내는 쪽 → 받는 쪽</th><th>주소</th><th>내용</th></tr>
-  <tr><td>①</td><td>휴대폰 ↔ security</td><td><code>https://&lt;PC IP&gt;/m/?token=…</code><br><code>wss://&lt;PC IP&gt;/ws/stream</code></td><td>카메라 페이지<br>프레임 전송 · ack</td></tr>
+  <tr><td>①</td><td>휴대폰 ↔ security</td><td><code>https://&lt;PC IP&gt;/m/?token=…</code><br><code>wss://&lt;PC IP&gt;/ws/stream</code></td><td>카메라 페이지<br>촬영 설정(<code>config</code>, 그림판 영역 포함) · 프레임 전송 · ack</td></tr>
   <tr><td>②</td><td>PC 브라우저 ↔ security</td><td><code>http://localhost/</code><br><code>POST /api/session</code><br><code>ws://localhost/ws/board?sid=…</code></td><td>그림판 페이지<br>세션 발급<br>그리기 명령 수신</td></tr>
   <tr><td>③</td><td>security → stream</td><td><code>http://stream:8002</code></td><td>① 프록시 + <code>X-Session-Id</code></td></tr>
   <tr><td>④</td><td>stream → vision</td><td><code>POST http://vision:8003/frames</code></td><td>JPEG 1장 + 세션·프레임 번호·시각</td></tr>
   <tr><td>⑤</td><td>vision → gesture</td><td><code>POST http://gesture:8004/landmarks</code></td><td>손 좌표 21개 또는 손 없음</td></tr>
-  <tr><td>⑥</td><td>gesture → web</td><td><code>POST http://web:8000/actions</code></td><td>동작 · 신뢰도 · <code>action</code> · 좌표</td></tr>
+  <tr><td>⑥</td><td>gesture → web</td><td><code>POST http://web:8000/actions</code></td><td>동작 · 신뢰도 · <code>action</code> · 좌표<br>손 좌표 21개 (<code>action: landmarks</code>, 표시 전용)</td></tr>
   <tr><td>⑦</td><td>security → web</td><td><code>http://web:8000</code></td><td>② 프록시</td></tr>
   <tr><td>⑧</td><td>stream → web</td><td><code>POST http://web:8000/events</code></td><td>휴대폰 연결 · 끊김</td></tr>
 </table></div>
@@ -160,8 +160,8 @@ li{margin:3px 0}
 </ul>
 <div class="tw"><table>
   <tr><th>계층</th><th>위치</th><th>담당</th><th>결과</th></tr>
-  <tr><td>1 손 좌표</td><td>vision</td><td>이진아</td><td>손 좌표 21개</td></tr>
-  <tr><td>2 특징 추출</td><td>gesture 내부</td><td>김대희</td><td>손가락 펴짐 · 거리 · 속도</td></tr>
+  <tr><td>1 손 좌표</td><td>vision</td><td>이진아</td><td>손 좌표 21개 (세션별 추적)</td></tr>
+  <tr><td>2 특징 추출</td><td>gesture 내부</td><td>김대희</td><td>손가락 펴짐 · 엄지–검지 거리 · 가장자리 여부</td></tr>
   <tr><td>3 동작 판별</td><td>gesture 내부</td><td>김대희</td><td>동작 이름 · 신뢰도 (규칙이든 모델이든 같은 형식)</td></tr>
   <tr><td>4 대응표</td><td><code>services/gesture/mapping.json</code></td><td>김대희</td><td>동작 → <code>action</code></td></tr>
   <tr><td>5 기능 실행</td><td>web (PC 브라우저)</td><td>박명수</td><td>화면 변화 · 도구 상태</td></tr>
@@ -174,6 +174,7 @@ li{margin:3px 0}
   <tr><td>새 기능 추가</td><td><code>action</code> 표 → web 구현 → <code>mapping.json</code></td><td>gesture · web</td></tr>
 </table></div>
 <p>web은 모르는 <code>action</code>을 무시한다 → gesture가 먼저 보내도 화면이 깨지지 않는다.</p>
+<p>지금의 손동작과 기능 짝: <code>docs/gestures.html</code></p>
 
 <h2>security 라우팅</h2>
 <div class="tw"><table>
@@ -205,10 +206,15 @@ li{margin:3px 0}
 <h2>처리 규칙</h2>
 <ul>
   <li><b>최신 프레임만</b>: ack 뒤에 다음 프레임, 처리 중에 온 건 버린다.</li>
-  <li><b>타임아웃 200ms</b>: ④⑤⑥ 중 하나라도 넘기면 그 프레임은 버린다.</li>
+  <li><b>타임아웃 200ms</b>: ④⑤ 중 하나라도 넘기면 그 프레임은 버린다.</li>
+  <li><b>⑥은 기다리지 않는다</b>: gesture는 명령을 큐에 넣고 바로 vision에 답한다. 큐가 순서대로 web에 보내고, 256개가 차면 새 명령을 버린다.</li>
   <li><b>버린 이유</b>: ack의 <code>reason</code>으로 확인 (예: <code>vision_timeout</code>, <code>vision_502</code>).</li>
-  <li><b>손이 없을 때</b>: vision <code>hand: null</code> → gesture <code>up</code>.</li>
+  <li><b>손이 없을 때</b>: vision <code>hand: null</code> → gesture는 3프레임까지 기다리고, 그 뒤 <code>up</code>과 빈 <code>landmarks</code>를 보낸다.</li>
+  <li><b>새 동작</b>: 4프레임 연속 보여야 바뀐다. 획이 시작되면 기다린 프레임의 좌표부터 그린다. 손가락이 테두리 2% 안에 걸린 프레임은 판별하지 않고 직전 동작을 이어 간다.</li>
   <li><b>좌표</b>: 0~1 정규화, 좌우 반전은 vision에서만, 캔버스 변환은 브라우저에서.</li>
+  <li><b>프레임 크기</b>: 휴대폰 방향과 상관없이 320×240. 카메라 비율이 다르면 가운데를 잘라 보낸다.</li>
+  <li><b>그림판 영역</b>: 프레임의 가운데(가로·세로 0.15~0.85)를 gesture가 캔버스 전체로 늘린다. 휴대폰 미리보기에 같은 영역을 표시한다. 값은 gesture <code>logic.Config</code>의 <code>zone_lo</code>·<code>zone_hi</code>와 stream의 <code>GESTURE_ZONE_LO</code>·<code>GESTURE_ZONE_HI</code>(<code>.env</code>)를 같게 둔다.</li>
+  <li><b>손 우선</b>: 손·마우스 획은 브라우저에서 같은 목록에 쌓인다. gesture 명령이 오면 0.8초 동안 마우스 입력을 받지 않는다.</li>
   <li><b>지연</b>: PC 화면에 <code>Date.now() - ts</code> 표시 (서버 처리 → 화면 도착).</li>
 </ul>
 
