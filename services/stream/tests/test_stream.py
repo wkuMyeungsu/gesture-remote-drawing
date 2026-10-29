@@ -47,7 +47,8 @@ class FakeServices:
 @pytest.fixture
 def make_client(monkeypatch):
     def make(**env):
-        defaults = {"STREAM_DEV_SID": "", "STREAM_VISION_URL": "http://vision:8003/frames", "STREAM_EVENTS_URL": "http://web:8000/events"}
+        defaults = {"STREAM_DEV_SID": "", "STREAM_VISION_URL": "http://vision:8003/frames", "STREAM_EVENTS_URL": "http://web:8000/events",
+                    "GESTURE_ZONE_LO": "", "GESTURE_ZONE_HI": ""}
         for key, value in {**defaults, **env}.items():
             monkeypatch.setenv(key, value)
         return TestClient(app)
@@ -95,7 +96,8 @@ def test_frame_goes_to_vision_and_ack_comes_back(make_client):
         fake = FakeServices()
         use_fake(c, fake)
         with phone(c) as ws:
-            assert ws.receive_json() == {"type": "config", "width": 320, "height": 240, "quality": 0.6, "max_fps": 15}
+            assert ws.receive_json() == {"type": "config", "width": 320, "height": 240, "quality": 0.6, "max_fps": 15,
+                                         "draw_zone": [0.15, 0.15, 0.85, 0.85]}
             before = int(time.time() * 1000)
             ws.send_text(json.dumps({"frame_id": 42, "jpeg": B64}))
             assert ws.receive_json() == {"type": "ack", "frame_id": 42, "dropped": False}
@@ -248,3 +250,15 @@ def test_shutdown_tells_web_phones_are_gone():
     relay.session("b")  # 휴대폰 없음
     asyncio.run(relay.notify_all_disconnected())
     assert fake.events == [{"sid": "a", "event": "disconnected"}]
+
+
+@pytest.mark.parametrize("lo, hi, expected", [
+    ("0.1", "0.9", [0.1, 0.1, 0.9, 0.9]),      # gesture와 같은 .env 값을 따른다
+    ("0.9", "0.1", [0.15, 0.15, 0.85, 0.85]),  # 거꾸로면 기본값
+    ("abc", "0.8", [0.15, 0.15, 0.85, 0.85]),  # 숫자가 아니면 기본값
+])
+def test_draw_zone_follows_gesture_env(make_client, lo, hi, expected):
+    """카메라 페이지의 그림판 영역은 gesture 좌표 보정 범위(GESTURE_ZONE_LO·HI)와 같아야 한다."""
+    with make_client(GESTURE_ZONE_LO=lo, GESTURE_ZONE_HI=hi) as c:
+        with phone(c) as ws:
+            assert ws.receive_json()["draw_zone"] == expected

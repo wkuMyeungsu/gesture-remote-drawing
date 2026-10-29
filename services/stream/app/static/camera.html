@@ -24,6 +24,13 @@
   .view { position: relative; overflow: hidden; width: 100%; max-height: 100%; aspect-ratio: var(--frame-aspect, 4 / 3); background: #0d1015; }
   video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
   .tip { color: var(--muted); font-size: .85rem; text-align: center; padding: .6rem 1rem 0; margin: 0; }
+  /* 그림판 영역: 이 네모 안의 손가락 위치가 그림판 전체에 대응한다. 바깥은 어둡게 가린다 */
+  .zone { position: absolute; display: none; border: 2px solid rgba(255, 255, 255, .9); border-radius: 4px;
+    box-shadow: 0 0 0 100vmax rgba(8, 10, 14, .62); pointer-events: none; }
+  body.live .zone { display: block; }
+  body.live .zone[hidden] { display: none; }
+  .zone span { position: absolute; left: 50%; top: -1.6rem; transform: translateX(-50%); white-space: nowrap;
+    font-size: .75rem; color: var(--ink); background: rgba(13, 16, 21, .72); padding: .1rem .5rem; border-radius: 999px; }
   video.mirror { transform: scaleX(-1); } /* 전면 카메라 미리보기만 거울처럼. 보내는 프레임은 뒤집지 않는다 (vision이 뒤집음) */
   .notice { position: absolute; inset: 0; display: grid; place-content: center; padding: 2rem; text-align: center; color: var(--muted); }
   body.live .notice { display: none; }
@@ -49,7 +56,8 @@
 <div class="stage">
   <div class="view" id="view">
     <video id="video" playsinline muted autoplay></video>
-    <p class="notice">휴대폰을 세워 두고 손이 화면 안에 들어오게 한 뒤 촬영을 시작하세요.</p>
+    <div class="zone" id="zone" aria-hidden="true"><span>그림판 영역</span></div>
+    <p class="notice">휴대폰을 세워 두고 손이 화면 안에 들어오게 한 뒤 촬영을 시작하세요. 밝은 네모(그림판 영역) 안에서 검지를 움직이면 그림판 전체에 그려져요.</p>
     <span class="badge" id="badge"></span>
   </div>
   <p class="tip" id="tip" hidden>휴대폰을 가로로 두면 더 넓게 찍혀요. 지금은 가운데 부분만 보내요.</p>
@@ -74,6 +82,16 @@
   const badge = document.getElementById("badge");
   const view = document.getElementById("view");
   const tip = document.getElementById("tip");
+  const zone = document.getElementById("zone");
+
+  // 그림판 영역을 미리보기 위에 표시한다. 미리보기는 보내는 프레임과 같은 영역이므로 비율을 그대로 쓴다.
+  // 영역은 가운데 기준 대칭이라 전면 카메라 미리보기를 거울처럼 뒤집어도 위치가 같다.
+  function showZone(z) {
+    if (!Array.isArray(z) || z.length !== 4) { zone.hidden = true; return; }
+    const [x0, y0, x1, y1] = z;
+    Object.assign(zone.style, { left: `${x0 * 100}%`, top: `${y0 * 100}%`, width: `${(x1 - x0) * 100}%`, height: `${(y1 - y0) * 100}%` });
+    zone.hidden = false;
+  }
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   const ACK_WAIT_MS = 2000; // ack가 이만큼 안 오면 다음 프레임을 보낸다 (멈춤 방지)
@@ -116,7 +134,11 @@
     ws.onmessage = (event) => {
       let msg;
       try { msg = JSON.parse(event.data); } catch (_) { return; }
-      if (msg.type === "config") { config = { ...config, ...msg }; view.style.setProperty("--frame-aspect", `${config.width} / ${config.height}`); }
+      if (msg.type === "config") {
+        config = { ...config, ...msg };
+        view.style.setProperty("--frame-aspect", `${config.width} / ${config.height}`);
+        showZone(config.draw_zone);
+      }
       else if (msg.type === "ack") {
         if (waiting && msg.frame_id === waiting.id) {
           acks.push({ t: performance.now(), rtt: performance.now() - waiting.at, dropped: !!msg.dropped });
