@@ -37,8 +37,8 @@ li{margin:3px 0}
   <tr><td class="hand">☝️</td><td>검지만 펴기<br><code>index_up</code></td><td>그리기<br><code>draw</code></td><td>검지 끝을 따라 선이 그려짐</td></tr>
   <tr><td class="hand">✌️</td><td>검지 + 중지 펴기<br><code>two_fingers</code></td><td>지우개<br><code>erase</code></td><td>검지 끝이 지나간 자리를 지움 (30px)</td></tr>
   <tr><td class="hand">🖐️</td><td>손가락 4개 모두 펴기<br><code>open_palm</code></td><td>커서 이동<br><code>hover</code></td><td>그리지 않고 커서만 움직임</td></tr>
-  <tr><td class="hand">✊</td><td>주먹<br><code>fist</code></td><td>펜 들기<br><code>up</code></td><td>선을 끊고 커서를 숨김 (손 뼈대는 보임)<br>그대로 1초 쥐고 있으면 전체 지우기로 이어짐</td></tr>
-  <tr><td class="hand">✊⏱</td><td>주먹 1초 유지<br><code>fist_hold</code></td><td>전체 지우기<br><code>clear</code></td><td>캔버스를 비움 (한 번만, 주먹이 처음 보인 때부터 1초)</td></tr>
+  <tr><td class="hand">✊</td><td>주먹<br><code>fist</code></td><td>펜 들기<br><code>up</code></td><td>선을 끊고 커서를 숨김 (손 뼈대는 보임)<br>손바닥에 빨간 링이 차고, 다 차면 전체 지우기. 손을 펴면 취소</td></tr>
+  <tr><td class="hand">✊⏱</td><td>주먹 1초 유지<br><code>fist_hold</code></td><td>전체 지우기<br><code>clear</code></td><td>캔버스를 비움 (한 번만, 주먹이 처음 보인 때부터 1초 · 2초로 바꾸는 중)</td></tr>
   <tr><td class="hand">👌</td><td>엄지·검지 끝 맞대고 나머지 3개 펴기 (OK 사인)<br><code>pinch</code></td><td>다음 색<br><code>next_color</code></td><td>펜 색이 다음 색으로 (한 번만)<br>또 바꾸려면 손을 폈다가 다시 👌</td></tr>
   <tr><td class="hand">∅</td><td>손이 안 보임<br><code>none</code></td><td>펜 들기<br><code>up</code></td><td>선을 끊고 커서·손 뼈대를 숨김</td></tr>
 </table></div>
@@ -83,7 +83,21 @@ li{margin:3px 0}
   <li><b>표시줄</b>: 맨 위에 판별한 동작 · 신뢰도 · 기능 · 지연(ms) · 손 크기.</li>
   <li><b>안내 문구</b>: 손 크기 0.25 초과 "조금 뒤로 가 주세요", 0.08 미만 "조금 가까이 와 주세요".</li>
   <li><b>가장자리 안내</b>: 판별에 쓰는 점이 테두리 2% 안이면 "손을 화면 안쪽으로 옮겨 주세요", 손 뼈대는 흐리게.</li>
+  <li><b>전체 지우기 카운트다운</b>: 주먹인 동안 손바닥 가운데에 빨간 링이 차고 "전체 지우기 · 손을 펴면 취소"가 뜬다.</li>
 </ul>
+
+<h2>발동 중인 기능 표시</h2>
+<p>손 뼈대 색과 손목 아래 글자로 지금 발동 중인 기능을 알려 준다.</p>
+<div class="tw"><table>
+  <tr><th>손 모양</th><th>기능</th><th>뼈대·글자 색</th><th>글자</th></tr>
+  <tr><td>☝️</td><td><code>draw</code></td><td>지금 펜 색</td><td>그리기</td></tr>
+  <tr><td>✌️</td><td><code>erase</code></td><td>회색</td><td>지우개</td></tr>
+  <tr><td>🖐️</td><td><code>hover</code></td><td>초록</td><td>이동</td></tr>
+  <tr><td>👌</td><td><code>next_color</code></td><td>바뀐 펜 색</td><td>색 변경</td></tr>
+  <tr><td>✊</td><td><code>up</code></td><td>어두운 회색</td><td>(카운트다운 링)</td></tr>
+  <tr><td>✊⏱</td><td><code>clear</code></td><td>빨강</td><td>전체 지우기</td></tr>
+</table></div>
+<p>색은 마지막으로 받은 기능으로 정한다. 손 모양과 기능의 짝이 바뀌어도 기능 기준이라 그대로 맞는다.</p>
 
 <h2>잘 쓰는 법</h2>
 <ul>
@@ -95,7 +109,7 @@ li{margin:3px 0}
 <h2>알려진 문제</h2>
 <ul>
   <li><b>가장자리 잡선</b>: 검지로 그리다 손이 화면 가장자리에 걸리면 검지 끝이 튀며 선이 그려질 수 있다 (gesture 수정 예정).</li>
-  <li><b>실수로 전체 지우기</b>: 주먹을 1초 쥐면 바로 지워진다. 확인 단계가 없다.</li>
+  <li><b>전체 지우기 시간</b>: 주먹 1초는 짧아 실수로 지우기 쉽다. 2초로 바꾸는 중 (gesture <code>fist_hold_ms</code>), 그 전에는 링이 절반쯤 찼을 때 지워진다.</li>
 </ul>
 
 <h2>바꾸는 곳</h2>
