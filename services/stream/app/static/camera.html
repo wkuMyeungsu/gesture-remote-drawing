@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14181f">
+<title>손동작 카메라</title>
+<style>
+  :root {
+    --bg: #14181f;
+    --ink: #eef1f5;
+    --muted: #96a0ad;
+    --ok: #46b98a;
+    --wait: #e2a541;
+    --bad: #e2574c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif; }
+  body { display: grid; grid-template-rows: 1fr auto; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+
+  .view { position: relative; overflow: hidden; background: #0d1015; }
+  video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  video.mirror { transform: scaleX(-1); } /* 전면 카메라 미리보기만 거울처럼. 보내는 프레임은 뒤집지 않는다 (vision이 뒤집음) */
+  .notice { position: absolute; inset: 0; display: grid; place-content: center; padding: 2rem; text-align: center; color: var(--muted); }
+  body.live .notice { display: none; }
+  .badge { position: absolute; top: .75rem; left: .75rem; padding: .3rem .6rem; border-radius: 999px; font-size: .8rem;
+    background: rgba(13, 16, 21, .72); color: var(--ink); font-variant-numeric: tabular-nums; display: none; }
+  body.live .badge { display: block; }
+
+  .bar { display: grid; gap: .7rem; padding: 1rem 1.25rem 1.25rem; }
+  .state { display: flex; align-items: center; gap: .5rem; font-size: .95rem; }
+  .dot { width: .6rem; height: .6rem; border-radius: 50%; background: var(--wait); flex: none; }
+  .state[data-tone="ok"] .dot { background: var(--ok); }
+  .state[data-tone="bad"] .dot { background: var(--bad); }
+  .numbers { color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; min-height: 1.3em; }
+  .buttons { display: grid; grid-template-columns: 1fr auto; gap: .6rem; }
+  button { font: inherit; font-weight: 600; padding: .95rem 1rem; border-radius: .75rem; border: 0; background: var(--ink); color: var(--bg); }
+  button.secondary { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 2px #3a4350; font-weight: 500; }
+  button:disabled { opacity: .45; }
+  button:focus-visible { outline: 3px solid var(--ok); outline-offset: 2px; }
+  body.live #toggle { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 2px var(--ink); }
+</style>
+</head>
+<body>
+<div class="view">
+  <video id="video" playsinline muted autoplay></video>
+  <p class="notice">휴대폰을 세워 두고 손이 화면 안에 들어오게 한 뒤 촬영을 시작하세요.</p>
+  <span class="badge" id="badge"></span>
+</div>
+<div class="bar">
+  <div class="state" id="state" role="status" aria-live="polite"><span class="dot"></span><span id="stateText">서버에 연결하는 중</span></div>
+  <div class="numbers" id="numbers"></div>
+  <div class="buttons">
+    <button id="toggle" disabled>촬영 시작</button>
+    <button id="flip" class="secondary" aria-label="전면·후면 카메라 바꾸기">카메라 전환</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const video = document.getElementById("video");
+  const toggle = document.getElementById("toggle");
+  const flip = document.getElementById("flip");
+  const stateBox = document.getElementById("state");
+  const stateText = document.getElementById("stateText");
+  const numbers = document.getElementById("numbers");
+  const badge = document.getElementById("badge");
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  const ACK_WAIT_MS = 2000; // ack가 이만큼 안 오면 다음 프레임을 보낸다 (멈춤 방지)
+
+  let config = { width: 320, height: 240, quality: 0.6, max_fps: 15 };
+  let ws = null, stream = null, wakeLock = null, stopped = false;
+  let facing = "user";
+  let frameId = 0, waiting = null, lastSent = 0, timer = null;
+  const acks = []; // 최근 2초의 ack: {t, rtt, dropped}
+
+  function setState(text, tone) { stateText.textContent = text; stateBox.dataset.tone = tone || ""; }
+
+  function showNumbers() {
+    const now = performance.now();
+    while (acks.length && now - acks[0].t > 2000) acks.shift();
+    const done = acks.filter((a) => !a.dropped);
+    const fps = (done.length / 2).toFixed(1);
+    const rtt = acks.length ? Math.round(acks.reduce((s, a) => s + a.rtt, 0) / acks.length) : 0;
+    const dropped = acks.length - done.length;
+    numbers.textContent = `처리 ${fps}fps, 응답 ${rtt}ms` + (dropped ? `, 최근 2초 버림 ${dropped}장` : "") + `, 보낸 프레임 ${frameId}장`;
+    if (stream) {
+      // 최근 프레임을 서버가 하나도 처리하지 못하면 알린다 (vision이 꺼져 있거나 느림)
+      if (acks.length >= 5 && !done.length) setState("촬영 중이지만 서버가 프레임을 처리하지 못하고 있어요", "");
+      else setState("촬영 중", "ok");
+    }
+    badge.textContent = `${canvas.width}×${canvas.height}, ${fps}fps`;
+  }
+
+  if (!window.isSecureContext || !navigator.mediaDevices) {
+    setState("카메라는 HTTPS 주소에서만 열립니다. PC 화면의 QR로 접속해 주세요.", "bad");
+    flip.disabled = true;
+    return;
+  }
+
+  function connect() {
+    const scheme = location.protocol === "https:" ? "wss" : "ws";
+    const sid = new URLSearchParams(location.search).get("sid"); // 개발용 (security 없이 테스트할 때만 서버가 받음)
+    ws = new WebSocket(`${scheme}://${location.host}/ws/stream` + (sid ? `?sid=${encodeURIComponent(sid)}` : ""));
+    ws.onopen = () => { waiting = null; setState(stream ? "촬영 중" : "연결됨. 촬영을 시작하세요.", stream ? "ok" : ""); toggle.disabled = false; schedule(0); };
+    ws.onmessage = (event) => {
+      let msg;
+      try { msg = JSON.parse(event.data); } catch (_) { return; }
+      if (msg.type === "config") { config = { ...config, ...msg }; }
+      else if (msg.type === "ack") {
+        if (waiting && msg.frame_id === waiting.id) {
+          acks.push({ t: performance.now(), rtt: performance.now() - waiting.at, dropped: !!msg.dropped });
+          waiting = null;
+          showNumbers();
+          schedule();
+        }
+      }
+    };
+    ws.onclose = (event) => {
+      if (event.code === 4401) { stopped = true; stopCamera(); setState("세션이 없습니다. PC 화면의 QR을 다시 찍어 주세요.", "bad"); toggle.disabled = true; return; }
+      if (event.code === 4409) { stopped = true; stopCamera(); setState("다른 휴대폰이 연결되어 이 휴대폰은 멈췄습니다.", "bad"); toggle.disabled = true; return; }
+      if (stopped) return;
+      setState("연결이 끊겼습니다. 다시 연결하는 중", "bad");
+      setTimeout(connect, 2000);
+    };
+  }
+
+  // 다음 프레임 예약: ack를 받았고, 최대 fps 간격이 지났을 때만 보낸다
+  function schedule(delay) {
+    clearTimeout(timer);
+    const gap = Math.max(0, lastSent + 1000 / Math.max(1, config.max_fps) - performance.now());
+    timer = setTimeout(send, delay ?? gap);
+  }
+
+  function send() {
+    if (!stream || !ws || ws.readyState !== WebSocket.OPEN || !video.videoWidth) { schedule(100); return; }
+    if (waiting && performance.now() - waiting.at < ACK_WAIT_MS) return; // ack를 기다리는 중
+    // 가로로 찍으면 width×height, 세로로 찍으면 height×width 안에 맞춘다 (비율 유지)
+    const landscape = video.videoWidth >= video.videoHeight;
+    const boxW = landscape ? config.width : config.height, boxH = landscape ? config.height : config.width;
+    const scale = Math.min(boxW / video.videoWidth, boxH / video.videoHeight, 1);
+    const w = Math.round(video.videoWidth * scale), h = Math.round(video.videoHeight * scale);
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    ctx.drawImage(video, 0, 0, w, h);
+    const jpeg = canvas.toDataURL("image/jpeg", config.quality).split(",", 2)[1];
+    const id = frameId++;
+    waiting = { id, at: performance.now() };
+    lastSent = waiting.at;
+    ws.send(JSON.stringify({ frame_id: id, jpeg }));
+    timer = setTimeout(send, ACK_WAIT_MS); // ack가 끝내 안 오면 다시 보낸다
+  }
+
+  async function keepAwake() {
+    try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch (_) {}
+  }
+
+  async function startCamera() {
+    toggle.disabled = true;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: facing }, width: { ideal: 640 }, height: { ideal: 480 } },
+      });
+    } catch (e) {
+      stream = null;
+      setState(`카메라를 열 수 없습니다: ${e.name === "NotAllowedError" ? "카메라 권한을 허용해 주세요." : e.message}`, "bad");
+      toggle.disabled = false;
+      return;
+    }
+    video.srcObject = stream;
+    video.classList.toggle("mirror", facing === "user");
+    await video.play().catch(() => {});
+    document.body.classList.add("live");
+    toggle.textContent = "촬영 멈추기";
+    toggle.disabled = false;
+    setState("촬영 중", "ok");
+    keepAwake();
+    schedule(0);
+  }
+
+  function stopCamera() {
+    clearTimeout(timer);
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+    stream = null; waiting = null; video.srcObject = null;
+    document.body.classList.remove("live");
+    toggle.textContent = "촬영 시작";
+    if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+  }
+
+  toggle.addEventListener("click", () => {
+    if (stream) { stopCamera(); setState("촬영을 멈췄습니다.", ""); } else { startCamera(); }
+  });
+  flip.addEventListener("click", async () => {
+    facing = facing === "user" ? "environment" : "user";
+    if (stream) { stopCamera(); await startCamera(); }
+  });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && stream) keepAwake(); });
+  connect();
+})();
+</script>
+</body>
+</html>
