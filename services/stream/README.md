@@ -49,6 +49,31 @@ STREAM_DEV_SID=dev
 
 `http://localhost:8002/m/?sid=dev`를 열고 **촬영 시작**을 누른다. vision이 아직 뼈대라 프레임은 `vision_501`로 버려지는 게 정상이다. 처리 현황은 `http://localhost:8002/sessions`에서 본다. `STREAM_DEV_SID`는 개발할 때만 쓴다 (켜 두면 헤더 없이도 세션을 받는다).
 
+### vision 없이 프레임 흐름 확인 (`dev/fake_vision.py`)
+
+vision이 준비되기 전에는 PC에서 vision 대역을 띄워 stream → vision 흐름을 확인한다. 표준 라이브러리만 쓴다.
+
+```bash
+# 루트 .env
+STREAM_DEV_SID=dev
+STREAM_VISION_URL=http://host.docker.internal:8003/frames
+
+docker compose up --build stream web               # vision 컨테이너는 띄우지 않는다 (8003 포트가 겹침)
+python services/stream/dev/fake_vision.py          # 받은 프레임을 1초마다 출력, 30ms 뒤 {"ok": true}
+```
+
+- `--delay 0.3`: 느린 vision 흉내. 200ms 시간 제한에 걸려 프레임이 버려지는 것을 확인한다.
+- `--landmarks http://localhost:8004/landmarks`: gesture에 ⑤ `hand: null`도 보낸다 (gesture 담당 테스트용).
+
+### web과 함께 확인 (⑧ 연결 알림)
+
+같은 세션 값으로 PC 그림판과 카메라 페이지를 연다.
+
+1. `http://localhost:8000/?sid=test` (그림판, 세션 발급·QR을 건너뜀)
+2. `http://localhost:8002/m/?sid=test` → **촬영 시작**
+
+그림판 위쪽이 "휴대폰 연결됨"으로 바뀌고 QR 창이 닫힌다. 카메라 페이지를 닫으면 "휴대폰 끊김"으로 바뀐다.
+
 ### 테스트
 
 ```bash
