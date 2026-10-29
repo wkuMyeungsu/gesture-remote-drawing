@@ -3,6 +3,7 @@
 
 const COLORS = ['#212529', '#e03131', '#1971c2', '#2f9e44', '#f08c00', '#9c36b5'];
 const SIZES = [2, 4, 8, 14, 22];
+const ERASER = { color: '#fff', size: 30 };  // 지우개는 배경색으로 덮는 획 (undo로 되돌릴 수 있다)
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('board');
@@ -13,7 +14,7 @@ const cursor = $('cursor');
 // ---------------------------------------------------------------- 그림 상태
 // 좌표는 0~1로 저장하고 그릴 때 캔버스 크기에 맞춘다 (창 크기가 바뀌어도 그대로).
 const pen = { color: 0, size: 1 };
-let strokes = [];     // { color, size, points: [[x, y], ...] }
+let strokes = [];     // { color, size, erase, points: [[x, y], ...] }
 let current = null;   // 펜이 내려가 있으면 그리는 중인 획
 
 function toPx(x, y) {
@@ -52,9 +53,11 @@ function resize() {
 }
 new ResizeObserver(resize).observe(stage);
 
-function penDown(x, y) {
+function penDown(x, y, erase = false) {
+  if (current && current.erase !== erase) current = null;  // 펜 ↔ 지우개가 바뀌면 새 획
   if (!current) {
-    current = { color: COLORS[pen.color], size: SIZES[pen.size], points: [[x, y]] };
+    const style = erase ? ERASER : { color: COLORS[pen.color], size: SIZES[pen.size] };
+    current = { ...style, erase, points: [[x, y]] };
     strokes.push(current);
     drawStroke(current);
   } else {
@@ -67,14 +70,16 @@ function penUp() {
   current = null;
 }
 
-function showCursor(x, y, drawing) {
+function showCursor(x, y, drawing, erasing = false) {
   const [px, py] = toPx(x, y);
-  const d = Math.max(10, SIZES[pen.size]);
+  const d = erasing ? ERASER.size : Math.max(10, SIZES[pen.size]);
+  const color = erasing ? '#868e96' : COLORS[pen.color];
   Object.assign(cursor.style, {
     left: `${px}px`, top: `${py}px`, width: `${d}px`, height: `${d}px`,
-    color: COLORS[pen.color], borderColor: COLORS[pen.color],
+    color, borderColor: color,
   });
   cursor.classList.toggle('drawing', drawing);
+  cursor.classList.toggle('erasing', erasing);
   cursor.hidden = false;
 }
 
@@ -91,10 +96,62 @@ function savePng() {
   a.click();
 }
 
+// ---------------------------------------------------------------- 손 좌표 표시
+// gesture가 프레임마다 보내는 action "landmarks"(params.points 21개, params.zone)를 그림판 위에 겹쳐 그린다.
+// 커서와 같게 zone을 캔버스 전체로 늘리므로 검지 끝이 커서 위치와 겹친다.
+// 표시 전용이라 그림·디버그 표시에는 영향을 주지 않는다.
+const handCanvas = $('hand');
+const hctx = handCanvas.getContext('2d');
+const HAND_LINKS = [
+  [0, 1], [1, 2], [2, 3], [3, 4],          // 엄지
+  [0, 5], [5, 6], [6, 7], [7, 8],          // 검지
+  [5, 9], [9, 10], [10, 11], [11, 12],     // 중지
+  [9, 13], [13, 14], [14, 15], [15, 16],   // 약지
+  [13, 17], [0, 17], [17, 18], [18, 19], [19, 20],  // 새끼·손바닥
+];
+let handTimer = null;
+
+function drawHand(params) {
+  const points = params?.points ?? [];
+  clearTimeout(handTimer);
+  if (points.length < 21) { handCanvas.hidden = true; return; }
+  handTimer = setTimeout(() => { handCanvas.hidden = true; }, 1000);  // 메시지가 끊기면 지운다
+  handCanvas.hidden = false;
+
+  const w = handCanvas.clientWidth, h = handCanvas.clientHeight;
+  const dpr = window.devicePixelRatio || 1;
+  if (handCanvas.width !== Math.round(w * dpr) || handCanvas.height !== Math.round(h * dpr)) {
+    handCanvas.width = Math.round(w * dpr);
+    handCanvas.height = Math.round(h * dpr);
+    hctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  hctx.clearRect(0, 0, w, h);
+
+  const [lo, hi] = params.zone ?? [0, 1];
+  const px = ([x, y]) => [(x - lo) / (hi - lo) * w, (y - lo) / (hi - lo) * h];
+  hctx.strokeStyle = 'rgba(47, 158, 68, .55)';
+  hctx.lineWidth = 4;
+  hctx.lineCap = 'round';
+  hctx.beginPath();
+  for (const [a, b] of HAND_LINKS) {
+    hctx.moveTo(...px(points[a]));
+    hctx.lineTo(...px(points[b]));
+  }
+  hctx.stroke();
+  points.forEach((p, i) => {
+    const [x, y] = px(p);
+    hctx.fillStyle = i === 8 ? '#f76707' : 'rgba(33, 37, 41, .6)';  // 8: 검지 끝 (그리는 점)
+    hctx.beginPath();
+    hctx.arc(x, y, i === 8 ? 8 : 5, 0, Math.PI * 2);
+    hctx.fill();
+  });
+}
+
 // ---------------------------------------------------------------- 기능(action) 실행
 // contracts의 action 표와 1:1. 표에 없는 action은 무시한다.
 const ACTIONS = {
   draw: (m) => { penDown(m.x, m.y); showCursor(m.x, m.y, true); },
+  erase: (m) => { penDown(m.x, m.y, true); showCursor(m.x, m.y, false, true); },
   hover: (m) => { penUp(); showCursor(m.x, m.y, false); },
   up: () => { penUp(); cursor.hidden = true; },
   clear: () => { penUp(); strokes = []; redraw(); },
@@ -106,6 +163,7 @@ const ACTIONS = {
 };
 
 function onAction(m) {
+  if (m.action === 'landmarks') { drawHand(m.params); return; }
   $('dbg-gesture').textContent = m.gesture ?? '-';
   $('dbg-conf').textContent = m.confidence != null ? m.confidence.toFixed(2) : '-';
   $('dbg-action').textContent = m.action;
@@ -122,6 +180,7 @@ function onEvent(m) {
     setPill('phone-state', false, '휴대폰 끊김');
     penUp();
     cursor.hidden = true;
+    handCanvas.hidden = true;
   }
 }
 

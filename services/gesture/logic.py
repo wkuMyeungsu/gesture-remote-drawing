@@ -22,7 +22,9 @@ POSES = {
 }
 
 # 프레임마다 좌표와 함께 보내는 기능. 나머지는 동작이 바뀔 때 한 번만 보낸다.
-CONTINUOUS = {"draw", "hover"}
+CONTINUOUS = {"draw", "erase", "hover"}
+# 획을 남기는 기능. 다른 기능으로 바뀌면 up을 보내 획을 끊는다.
+STROKES = {"draw", "erase"}
 
 MAPPING_PATH = Path(__file__).with_name("mapping.json")
 
@@ -37,6 +39,7 @@ class Config:
     hold_frames: int = 4         # 새 동작은 연속 N프레임 보여야 인정
     lost_grace_frames: int = 3   # 손이 이만큼 연속으로 안 보여야 획을 끝낸다
     fist_hold_ms: int = 1000     # 주먹을 이만큼 유지해야 fist_hold (clear)
+    send_landmarks: bool = False # 프레임마다 손 좌표 21개를 action "landmarks"로 보낸다 (그림판 표시용)
 
 
 def load_mapping(path=MAPPING_PATH):
@@ -98,7 +101,7 @@ class Session:
         self._fist_since = None      # 주먹으로 바뀐 시각 (ts, ms)
         self._missing = 0            # 손이 연속으로 안 보인 프레임 수
         self._last_gesture = None    # 마지막으로 내보낸 동작 (1회 기능 중복 방지)
-        self._pen_down = False       # draw 중인지 (획 경계에 up을 보내기 위해)
+        self._stroke = None          # 진행 중인 획 기능 (draw/erase). 바뀌면 up을 보낸다
         self.last_seen = time.monotonic()
 
     def update(self, frame_id, ts, points, score):
@@ -107,20 +110,23 @@ class Session:
             return self._on_no_hand(frame_id, ts)
         self._missing = 0
 
-        x, y = points[INDEX_TIP][0], points[INDEX_TIP][1]
         if self.cfg.mirror:
-            x = 1.0 - x
+            points = [[1.0 - p[0], p[1]] for p in points]
+        x, y = points[INDEX_TIP][0], points[INDEX_TIP][1]
         sx, sy = self.smoother.update(x, y)
         xy = (to_canvas(sx, self.cfg.zone_lo, self.cfg.zone_hi),
               to_canvas(sy, self.cfg.zone_lo, self.cfg.zone_hi))
 
         self._stabilize(classify(points, self.cfg.extend_ratio), ts)
-        if self.gesture is None:
-            return []
-        gesture = self.gesture
-        if gesture == "fist" and ts - self._fist_since >= self.cfg.fist_hold_ms:
-            gesture = "fist_hold"
-        return self._emit(gesture, score, frame_id, ts, xy)
+        out = []
+        if self.gesture is not None:
+            gesture = self.gesture
+            if gesture == "fist" and ts - self._fist_since >= self.cfg.fist_hold_ms:
+                gesture = "fist_hold"
+            out = self._emit(gesture, score, frame_id, ts, xy)
+        if self.cfg.send_landmarks:
+            out.append(self._landmarks(score, frame_id, ts, points))
+        return out
 
     def _stabilize(self, raw, ts):
         # unknown은 현재 동작을 유지한다. 한 프레임 오인식으로 선이 끊기지 않게 연속 N프레임을 요구한다.
@@ -142,11 +148,14 @@ class Session:
         self._missing += 1
         if self._missing <= self.cfg.lost_grace_frames:
             return []
+        out = []
         if self._missing == self.cfg.lost_grace_frames + 1:
             self.smoother.reset()
             self.gesture = None
             self._candidate, self._count = None, 0
-        return self._emit("none", 1.0, frame_id, ts, None)
+            if self.cfg.send_landmarks:
+                out.append(self._landmarks(1.0, frame_id, ts, []))  # 그림판의 손 표시를 지운다
+        return self._emit("none", 1.0, frame_id, ts, None) + out
 
     def _emit(self, gesture, confidence, frame_id, ts, xy):
         action = self.mapping.get(gesture)
@@ -154,9 +163,9 @@ class Session:
         self._last_gesture = gesture
         out = []
 
-        if self._pen_down and action != "draw":
+        if self._stroke and action != self._stroke:
             out.append(self._command(gesture, confidence, frame_id, ts, "up"))
-            self._pen_down = False
+            self._stroke = None
             if action == "up":
                 return out
 
@@ -164,10 +173,18 @@ class Session:
             return out
         if action in CONTINUOUS:
             out.append(self._command(gesture, confidence, frame_id, ts, action, xy))
-            self._pen_down = action == "draw"
+            self._stroke = action if action in STROKES else None
         elif changed:
             out.append(self._command(gesture, confidence, frame_id, ts, action))
         return out
+
+    def _landmarks(self, confidence, frame_id, ts, points):
+        cmd = self._command(self.gesture or "none", confidence, frame_id, ts, "landmarks")
+        cmd["params"] = {
+            "points": [[round(p[0], 3), round(p[1], 3)] for p in points],
+            "zone": [self.cfg.zone_lo, self.cfg.zone_hi],
+        }
+        return cmd
 
     def _command(self, gesture, confidence, frame_id, ts, action, xy=None):
         cmd = {

@@ -21,6 +21,7 @@ def config_from_env():
     c.alpha = float(os.environ.get("GESTURE_ALPHA", c.alpha))
     c.hold_frames = int(os.environ.get("GESTURE_HOLD_FRAMES", c.hold_frames))
     c.fist_hold_ms = int(os.environ.get("GESTURE_FIST_HOLD_MS", c.fist_hold_ms))
+    c.send_landmarks = os.environ.get("GESTURE_SEND_LANDMARKS", "1") == "1"
     return c
 
 

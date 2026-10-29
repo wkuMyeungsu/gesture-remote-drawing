@@ -87,9 +87,16 @@ def run_scenarios():
     cmds = r.feed(None, 2) + r.feed("index_up", 2)
     results.append(check("brief hand loss keeps stroke", actions(cmds) == ["draw", "draw"], actions(cmds)))
 
-    # 5. 두 손가락으로 바꾸면 up 한 번 뒤 hover
+    # 5. 두 손가락으로 바꾸면 up 한 번 뒤 erase(좌표 포함), 다시 검지로 바꾸면 up 뒤 draw
     cmds = r.feed("two_fingers", 6)
-    results.append(check("draw -> two_fingers sends up then hover",
+    results.append(check("draw -> two_fingers sends up then erase",
+                         actions(cmds) == ["draw"] * 3 + ["up"] + ["erase"] * 3, actions(cmds)))
+    results.append(check("erase carries x, y", all("x" in c and "y" in c for c in cmds if c["action"] == "erase")))
+    cmds = r.feed("index_up", 6)
+    results.append(check("erase -> index_up sends up then draw",
+                         actions(cmds) == ["erase"] * 3 + ["up"] + ["draw"] * 3, actions(cmds)))
+    cmds = r.feed("open_palm", 6)
+    results.append(check("draw -> open_palm sends up then hover",
                          actions(cmds) == ["draw"] * 3 + ["up"] + ["hover"] * 3, actions(cmds)))
 
     # 6. 손이 오래 사라지면 up 한 번, 이후 조용
@@ -125,7 +132,20 @@ def run_scenarios():
     out_b = store.process({"sid": "b", "frame_id": 0, "ts": 0, "hand": {"score": 0.9, "points": fake_hand(POSE["index_up"])}})
     results.append(check("sessions are independent", out_b == [], out_b))
 
-    # 11. 형식 검사
+    # 11. send_landmarks: 손이 보이는 프레임마다 landmarks 1개, 손이 사라지면 빈 목록 1번
+    store = logic.SessionStore(config=logic.Config(send_landmarks=True))
+    hand = {"score": 0.9, "points": fake_hand(POSE["index_up"])}
+    per_frame = [store.process({"sid": "l", "frame_id": i, "ts": i * FRAME_MS, "hand": hand}) for i in range(6)]
+    lms = [[c for c in cmds if c["action"] == "landmarks"] for cmds in per_frame]
+    results.append(check("landmarks every frame with 21 points",
+                         all(len(l) == 1 and len(l[0]["params"]["points"]) == 21 for l in lms), [len(l) for l in lms]))
+    results.append(check("landmarks do not change actions",
+                         [c["action"] for cmds in per_frame for c in cmds if c["action"] != "landmarks"] == ["draw"] * 3))
+    lost = [c for i in range(6, 12) for c in store.process({"sid": "l", "frame_id": i, "ts": i * FRAME_MS, "hand": None})]
+    cleared = [c for c in lost if c["action"] == "landmarks"]
+    results.append(check("hand loss clears landmarks once", len(cleared) == 1 and cleared[0]["params"]["points"] == [], actions(lost)))
+
+    # 12. 형식 검사
     bad = [{}, {"sid": "x", "frame_id": 1, "ts": 1, "hand": {"points": [[0, 0]] * 5}}, {"sid": "x", "frame_id": "1", "ts": 1, "hand": None}]
     rejected = 0
     for msg in bad:
