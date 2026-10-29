@@ -109,7 +109,7 @@ li{margin:3px 0}
   <!-- ⑥ gesture → web -->
   <path class="ln" d="M650 384V462"/>
   <text class="n halo" x="662" y="428">⑥</text>
-  <text class="t halo" x="680" y="428">POST /commands</text>
+  <text class="t halo" x="680" y="428">POST /actions</text>
 
   <!-- ⑦ security ↔ web -->
   <path class="ln both" d="M462 296H500V494H548"/>
@@ -130,11 +130,11 @@ li{margin:3px 0}
 <h2>서비스</h2>
 <div class="tw"><table>
   <tr><th>번호</th><th>서비스</th><th>포트</th><th>하는 일</th><th>가진 상태</th><th>담당</th></tr>
-  <tr><td>0</td><td><code>web</code></td><td>8000</td><td>PC 그림판 페이지 제공, QR 표시, 캔버스 그리기, 실행 취소·PNG 저장(브라우저 안), ⑥ 명령을 PC 브라우저로 WebSocket 중계</td><td>세션별 PC 화면 연결</td><td>박명수</td></tr>
+  <tr><td>0</td><td><code>web</code></td><td>8000</td><td>PC 그림판 페이지 제공, QR 표시, ⑥ 기능(<code>action</code>)을 PC 브라우저로 WebSocket 중계, 브라우저에서 기능 실행(그리기·지우기·실행 취소·색과 굵기 변경·PNG 저장)</td><td>세션별 PC 화면 연결, 현재 도구·색·굵기 (브라우저 안)</td><td>박명수</td></tr>
   <tr><td>1</td><td><code>security</code></td><td>443 (nginx)<br>8001 (세션 API)</td><td>HTTPS 종료, 경로별 라우팅, QR 세션 발급, <code>auth_request</code>로 휴대폰 요청 검사</td><td>세션 목록, 1회용 토큰</td><td>김도은</td></tr>
   <tr><td>2</td><td><code>stream</code></td><td>8002</td><td>휴대폰 카메라 페이지 제공, WebSocket으로 프레임 수신, 해상도·fps·압축 조절, vision으로 전달</td><td>세션별 처리 중 여부</td><td>임우진</td></tr>
   <tr><td>3</td><td><code>vision</code></td><td>8003</td><td>JPEG 디코딩, 좌우 반전, MediaPipe Hands로 손 좌표 21개 추출</td><td>없음 (여러 개로 늘릴 수 있음)</td><td>이진아</td></tr>
-  <tr><td>4</td><td><code>gesture</code></td><td>8004</td><td>좌표 흔들림 보정, 동작 판별(그리기·이동·지우기·색 변경), 명령 생성</td><td>세션별 이전 좌표, 펜 상태, 필터 값</td><td>김대희</td></tr>
+  <tr><td>4</td><td><code>gesture</code></td><td>8004</td><td>좌표 흔들림 보정, 손 모양·움직임으로 동작(<code>gesture</code>) 판별, 대응표로 기능(<code>action</code>) 결정</td><td>세션별 이전 좌표, 펜 상태, 필터 값</td><td>김대희</td></tr>
 </table></div>
 
 <h2>연결</h2>
@@ -145,11 +145,30 @@ li{margin:3px 0}
   <tr><td>③</td><td>security → stream</td><td><code>http://stream:8002</code></td><td>①을 프록시. 인증된 세션 ID를 <code>X-Session-Id</code> 헤더로 붙여 전달</td></tr>
   <tr><td>④</td><td>stream → vision</td><td><code>POST http://vision:8003/frames</code></td><td>JPEG 한 장과 세션·프레임 번호·촬영 시각</td></tr>
   <tr><td>⑤</td><td>vision → gesture</td><td><code>POST http://gesture:8004/landmarks</code></td><td>손 좌표 21개(0~1 정규화) 또는 손 없음</td></tr>
-  <tr><td>⑥</td><td>gesture → web</td><td><code>POST http://web:8000/commands</code></td><td>그리기·이동·지우기·색 변경 명령과 좌표(0~1)</td></tr>
+  <tr><td>⑥</td><td>gesture → web</td><td><code>POST http://web:8000/actions</code></td><td>인식한 동작 이름·신뢰도, 실행할 기능(<code>action</code>), 좌표(0~1)</td></tr>
   <tr><td>⑦</td><td>security → web</td><td><code>http://web:8000</code></td><td>②를 프록시</td></tr>
   <tr><td>⑧</td><td>stream → web</td><td><code>POST http://web:8000/events</code></td><td>휴대폰 연결·끊김 알림</td></tr>
 </table></div>
 <p>각 연결의 메시지 형식: <code>docs/contracts/README.md</code>.</p>
+
+<h2>동작 → 기능 계층</h2>
+<p>손 모양을 알아보는 일(gesture)과 화면에서 기능을 실행하는 일(web)을 나눈다. 둘 사이의 약속은 기능 이름 목록(<code>action</code> 표) 하나뿐이다.</p>
+<div class="tw"><table>
+  <tr><th>계층</th><th>위치</th><th>담당</th><th>결과</th></tr>
+  <tr><td>1 손 좌표</td><td>vision</td><td>이진아</td><td>손 좌표 21개</td></tr>
+  <tr><td>2 특징 추출</td><td>gesture 내부</td><td>김대희</td><td>손가락별 펴짐 여부, 손가락 사이 거리, 이동 속도 등</td></tr>
+  <tr><td>3 동작 판별</td><td>gesture 내부</td><td>김대희</td><td>동작 이름(<code>gesture</code>)과 신뢰도. 규칙으로 하든 학습 모델로 하든 결과 형식은 같다</td></tr>
+  <tr><td>4 대응표</td><td><code>services/gesture/mapping.json</code></td><td>김대희</td><td>동작 이름 → 기능 이름(<code>action</code>)</td></tr>
+  <tr><td>5 기능 실행</td><td>web (PC 브라우저)</td><td>박명수</td><td>화면 변화. 현재 도구·색·굵기는 web이 가진다</td></tr>
+</table></div>
+<div class="tw"><table>
+  <tr><th>하고 싶은 일</th><th>고치는 곳</th><th>다른 파트와 합의</th></tr>
+  <tr><td>기존 기능을 새 손 모양으로 실행</td><td>gesture 2·3계층, <code>mapping.json</code></td><td>필요 없음</td></tr>
+  <tr><td>손 모양과 기능의 짝 바꾸기</td><td><code>mapping.json</code></td><td>필요 없음</td></tr>
+  <tr><td>판별 방식을 규칙에서 모델로 교체</td><td>gesture 3계층</td><td>필요 없음</td></tr>
+  <tr><td>새 기능 추가 (예: 지우개, 도형)</td><td><code>docs/contracts/README.md</code>의 <code>action</code> 표에 한 줄 추가 → web 구현 → <code>mapping.json</code></td><td>gesture · web</td></tr>
+</table></div>
+<p>web은 모르는 <code>action</code>을 받으면 무시한다. 그래서 gesture가 먼저 새 기능을 보내기 시작해도 화면이 깨지지 않는다.</p>
 
 <h2>security 라우팅</h2>
 <div class="tw"><table>
@@ -176,7 +195,7 @@ li{margin:3px 0}
 <ul>
   <li><b>최신 프레임만 처리</b>: 휴대폰은 앞 프레임의 응답(ack)을 받은 뒤에 다음 프레임을 보낸다. stream은 vision 응답을 기다리는 중에 들어온 프레임을 버린다. 큐에 쌓지 않는다.</li>
   <li><b>타임아웃 200ms</b>: ④⑤⑥ 각 요청이 200ms를 넘기면 그 프레임은 버린다.</li>
-  <li><b>손이 없을 때</b>: vision은 <code>hand: null</code>을 보내고, gesture는 펜을 든다(<code>cmd: "up"</code>).</li>
+  <li><b>손이 없을 때</b>: vision은 <code>hand: null</code>을 보내고, gesture는 펜을 든다(<code>action: "up"</code>).</li>
   <li><b>좌표</b>: ⑤⑥의 좌표는 0~1로 정규화한다. 좌우 반전은 vision에서 한 번만 한다. 캔버스 크기에 맞춘 변환은 PC 브라우저에서 한다.</li>
   <li><b>지연 측정</b>: stream이 프레임을 받은 시각을 <code>ts</code>(유닉스 ms)로 붙여 ⑥까지 그대로 전달한다. 서버와 PC 브라우저는 같은 PC에서 돌아 시계가 같으므로, PC 브라우저가 <code>Date.now() - ts</code>를 화면에 표시하면 서버 처리부터 화면 도착까지의 지연이 된다. 휴대폰→서버 전송 시간은 이 값에 들어가지 않는다.</li>
 </ul>

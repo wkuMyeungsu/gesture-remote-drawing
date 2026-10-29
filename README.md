@@ -18,11 +18,11 @@ PC 브라우저 ─HTTPS─▶ [security] ─▶ [web]
 
 | 폴더 | 역할 | 담당 | 포트 | 컨테이너 주소 |
 |---|---|---|---|---|
-| `services/web/` | PC 그림판 페이지, QR 표시, 그리기 명령을 PC 브라우저로 중계 | 박명수 | 8000 | `http://web:8000` |
+| `services/web/` | PC 그림판 페이지, QR 표시, 기능(`action`) 실행 | 박명수 | 8000 | `http://web:8000` |
 | `services/security/` | nginx HTTPS·라우팅, QR 세션 발급·검증 | 김도은 | 443, 8001 | `http://security:8001` |
 | `services/stream/` | 휴대폰 카메라 페이지, 프레임 수신, vision으로 전달 | 임우진 | 8002 | `http://stream:8002` |
 | `services/vision/` | 전처리, MediaPipe Hands로 손 좌표 21개 추출 | 이진아 | 8003 | `http://vision:8003` |
-| `services/gesture/` | 좌표 보정, 동작 판별, 그리기 명령 생성 | 김대희 | 8004 | `http://gesture:8004` |
+| `services/gesture/` | 좌표 보정, 동작(`gesture`) 판별, 동작 → 기능(`action`) 대응 | 김대희 | 8004 | `http://gesture:8004` |
 
 - 전체 구조와 연결: `docs/architecture.html`
 - 서비스 사이에 주고받는 데이터 형식: `docs/contracts/README.md`

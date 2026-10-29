@@ -8,7 +8,7 @@
 | ① ③ | 휴대폰 ↔ stream (security 경유) | WebSocket `/ws/stream` | 제안 |
 | ④ | stream → vision | `POST http://vision:8003/frames` | 제안 |
 | ⑤ | vision → gesture | `POST http://gesture:8004/landmarks` | 제안 |
-| ⑥ | gesture → web | `POST http://web:8000/commands` | 제안 |
+| ⑥ | gesture → web | `POST http://web:8000/actions` | 제안 |
 | ⑦ ② | web → PC 브라우저 (security 경유) | WebSocket `/ws/board?sid=…` | 제안 |
 | ⑧ | stream → web | `POST http://web:8000/events` | 제안 |
 
@@ -90,33 +90,66 @@ vision은 응답을 먼저 돌려주지 않고, ⑤를 보낸 뒤 `{"ok": true}`
 - 손이 없으면 `"hand": null`.
 - 손이 둘 이상이면 `score`가 가장 높은 손 하나만 보낸다.
 
-## ⑥ 그리기 명령 — gesture → web
+## ⑥ 기능 실행 요청 — gesture → web
 
-`POST http://web:8000/commands`
+`POST http://web:8000/actions`
+
+gesture는 "어떤 동작을 알아봤는지(`gesture`)"와 "어떤 기능을 실행할지(`action`)"를 함께 보낸다. web은 `action`으로만 동작하고, `gesture`·`confidence`는 화면 표시(디버깅·시연)에만 쓴다.
 
 ```json
-{ "sid": "5f0c2a9e-…", "frame_id": 42, "ts": 1793253600123, "cmd": "draw", "x": 0.531, "y": 0.402 }
+{ "sid": "5f0c2a9e-…", "frame_id": 42, "ts": 1793253600123, "gesture": "index_up", "confidence": 0.95, "action": "draw", "x": 0.531, "y": 0.402 }
+{ "sid": "5f0c2a9e-…", "frame_id": 57, "ts": 1793253601120, "gesture": "fist_hold", "confidence": 0.90, "action": "clear" }
 ```
 
-| `cmd` | 뜻 | 추가 필드 |
-|---|---|---|
-| `draw` | 펜을 내린 채 이동 (선을 그림) | `x`, `y` |
-| `hover` | 펜을 든 채 이동 (커서만) | `x`, `y` |
-| `up` | 펜 들기 (손이 사라졌을 때 포함) | 없음 |
-| `clear` | 캔버스 지우기 | 없음 |
-| `color` | 펜 색 변경 | `color` (`"#e53935"` 형식) |
+| 필드 | 형식 | 정하는 쪽 | 뜻 |
+|---|---|---|---|
+| `gesture` | 문자열 | gesture 담당이 자유롭게 | 인식한 동작 이름. 손이 없으면 `"none"` |
+| `confidence` | 실수 0~1 | gesture | 판별 신뢰도 |
+| `action` | 문자열 | 아래 표 (합의) | 실행할 기능 |
+| `x`, `y` | 실수 0~1 | gesture | 좌표가 필요한 기능에만 |
+| `params` | 객체 (선택) | 아래 표 (합의) | 기능별 추가 값. 형식을 바꾸지 않고 값을 늘릴 때 쓴다 |
 
-- 동작 판별 규칙(어떤 손 모양이 어떤 명령인지)은 gesture 담당이 `services/gesture/README.md`에 적는다.
-- `clear`, `color`는 같은 손 모양이 일정 시간 유지될 때 한 번만 보낸다.
+### `action` 표
+
+새 기능은 이 표에 한 줄을 추가하는 것으로 시작한다 (gesture·web 합의). 현재 도구·색·굵기 같은 상태는 web이 가진다. gesture는 "다음 색"처럼 바꾸려는 의도만 보내고 값 자체는 보내지 않는다.
+
+| `action` | 종류 | 뜻 | 필드 |
+|---|---|---|---|
+| `draw` | 연속 | 펜을 내린 채 이동 (선을 그림) | `x`, `y` |
+| `hover` | 연속 | 펜을 든 채 이동 (커서만) | `x`, `y` |
+| `up` | 1회 | 펜 들기 (손이 사라졌을 때 포함) | 없음 |
+| `clear` | 1회 | 캔버스 전체 지우기 | 없음 |
+| `undo` | 1회 | 마지막 획 취소 | 없음 |
+| `next_color` | 1회 | 펜 색을 팔레트의 다음 색으로 | 없음 |
+| `size_up` / `size_down` | 1회 | 펜 굵기 한 단계 키우기 / 줄이기 | 없음 |
+| `save` | 1회 | 캔버스를 PNG로 저장 | 없음 |
+
+- 연속 기능은 프레임마다 보내고, 1회 기능은 한 번 실행할 때 한 번만 보낸다. 한 번만 보내도록 판단하는 방법은 gesture가 정한다.
+- web은 표에 없는 `action`을 받으면 무시한다.
+
+### 대응표 `services/gesture/mapping.json`
+
+동작 이름과 기능 이름의 짝은 gesture 담당이 이 파일로 관리한다. 짝을 바꾸는 데에는 다른 파트와 합의가 필요 없다.
+
+```json
+{
+  "index_up": "draw",
+  "open_palm": "hover",
+  "none": "up",
+  "fist_hold": "clear",
+  "swipe_left": "undo",
+  "pinch": "next_color"
+}
+```
 
 ## ⑦② 화면 반영 — web → PC 브라우저
 
 `wss://<PC IP>/ws/board?sid=…`
 
-web은 ⑥에서 받은 JSON을 같은 `sid`의 PC 브라우저에 그대로 보낸다. ⑧ 이벤트도 같은 통로로 보낸다.
+web은 ⑥에서 받은 JSON에 `"type": "action"`을 붙여 같은 `sid`의 PC 브라우저에 보낸다. ⑧ 이벤트도 같은 통로로 보낸다.
 
 ```json
-{ "type": "command", "cmd": "draw", "x": 0.531, "y": 0.402, "frame_id": 42, "ts": 1793253600123 }
+{ "type": "action", "gesture": "index_up", "confidence": 0.95, "action": "draw", "x": 0.531, "y": 0.402, "frame_id": 42, "ts": 1793253600123 }
 { "type": "event", "event": "connected" }
 ```
 
