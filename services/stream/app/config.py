@@ -17,11 +17,23 @@ class Settings:
     max_frame_bytes: int
     dev_sid: str  # 개발용. 정하면 X-Session-Id 헤더가 없을 때 ?sid= 또는 이 값을 세션으로 쓴다 (security 없이 테스트)
     session_ttl: float  # 휴대폰이 끊긴 세션을 이만큼(초) 지나면 지운다
+    zone_lo: float  # 그림판 영역: 프레임에서 이 범위(가로·세로 같음)를 gesture가 그림판 전체로 늘린다
+    zone_hi: float
 
 
 def _env(name: str, default: str) -> str:
     value = os.getenv(name, "").strip()
     return value or default
+
+
+def _zone() -> tuple[float, float]:
+    """그림판 영역. gesture의 좌표 보정 범위(zone_lo~zone_hi, 기본 0.15~0.85)와 같아야 한다.
+    루트 .env는 모든 서비스가 같이 읽으므로 GESTURE_ZONE_LO·GESTURE_ZONE_HI 하나로 두 서비스를 맞춘다."""
+    try:
+        lo, hi = float(_env("GESTURE_ZONE_LO", "0.15")), float(_env("GESTURE_ZONE_HI", "0.85"))
+    except ValueError:
+        return 0.15, 0.85
+    return (lo, hi) if 0 <= lo < hi <= 1 else (0.15, 0.85)
 
 
 def load_settings() -> Settings:
@@ -36,4 +48,6 @@ def load_settings() -> Settings:
         max_frame_bytes=int(_env("STREAM_MAX_FRAME_BYTES", str(512 * 1024))),
         dev_sid=os.getenv("STREAM_DEV_SID", "").strip(),
         session_ttl=float(_env("STREAM_SESSION_TTL", "600")),
+        zone_lo=_zone()[0],
+        zone_hi=_zone()[1],
     )

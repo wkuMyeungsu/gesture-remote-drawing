@@ -19,8 +19,18 @@
     font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif; }
   body { display: grid; grid-template-rows: 1fr auto; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
 
-  .view { position: relative; overflow: hidden; background: #0d1015; }
-  video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .stage { display: grid; place-items: center; background: #0d1015; overflow: hidden; }
+  /* 보내는 프레임과 같은 영역만 보여 준다 (가로 4:3, 가운데). 세로로 들면 위아래가 잘린다 */
+  .view { position: relative; overflow: hidden; width: 100%; max-height: 100%; aspect-ratio: var(--frame-aspect, 4 / 3); background: #0d1015; }
+  video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tip { color: var(--muted); font-size: .85rem; text-align: center; padding: .6rem 1rem 0; margin: 0; }
+  /* 그림판 영역: 이 네모 안의 손가락 위치가 그림판 전체에 대응한다. 바깥은 어둡게 가린다 */
+  .zone { position: absolute; display: none; border: 2px solid rgba(255, 255, 255, .9); border-radius: 4px;
+    box-shadow: 0 0 0 100vmax rgba(8, 10, 14, .62); pointer-events: none; }
+  body.live .zone { display: block; }
+  body.live .zone[hidden] { display: none; }
+  .zone span { position: absolute; left: 50%; top: -1.6rem; transform: translateX(-50%); white-space: nowrap;
+    font-size: .75rem; color: var(--ink); background: rgba(13, 16, 21, .72); padding: .1rem .5rem; border-radius: 999px; }
   video.mirror { transform: scaleX(-1); } /* 전면 카메라 미리보기만 거울처럼. 보내는 프레임은 뒤집지 않는다 (vision이 뒤집음) */
   .notice { position: absolute; inset: 0; display: grid; place-content: center; padding: 2rem; text-align: center; color: var(--muted); }
   body.live .notice { display: none; }
@@ -43,10 +53,14 @@
 </style>
 </head>
 <body>
-<div class="view">
-  <video id="video" playsinline muted autoplay></video>
-  <p class="notice">휴대폰을 세워 두고 손이 화면 안에 들어오게 한 뒤 촬영을 시작하세요.</p>
-  <span class="badge" id="badge"></span>
+<div class="stage">
+  <div class="view" id="view">
+    <video id="video" playsinline muted autoplay></video>
+    <div class="zone" id="zone" aria-hidden="true"><span>그림판 영역</span></div>
+    <p class="notice">휴대폰을 세워 두고 손이 화면 안에 들어오게 한 뒤 촬영을 시작하세요. 밝은 네모(그림판 영역) 안에서 검지를 움직이면 그림판 전체에 그려져요.</p>
+    <span class="badge" id="badge"></span>
+  </div>
+  <p class="tip" id="tip" hidden>휴대폰을 가로로 두면 더 넓게 찍혀요. 지금은 가운데 부분만 보내요.</p>
 </div>
 <div class="bar">
   <div class="state" id="state" role="status" aria-live="polite"><span class="dot"></span><span id="stateText">서버에 연결하는 중</span></div>
@@ -66,6 +80,18 @@
   const stateText = document.getElementById("stateText");
   const numbers = document.getElementById("numbers");
   const badge = document.getElementById("badge");
+  const view = document.getElementById("view");
+  const tip = document.getElementById("tip");
+  const zone = document.getElementById("zone");
+
+  // 그림판 영역을 미리보기 위에 표시한다. 미리보기는 보내는 프레임과 같은 영역이므로 비율을 그대로 쓴다.
+  // 영역은 가운데 기준 대칭이라 전면 카메라 미리보기를 거울처럼 뒤집어도 위치가 같다.
+  function showZone(z) {
+    if (!Array.isArray(z) || z.length !== 4) { zone.hidden = true; return; }
+    const [x0, y0, x1, y1] = z;
+    Object.assign(zone.style, { left: `${x0 * 100}%`, top: `${y0 * 100}%`, width: `${(x1 - x0) * 100}%`, height: `${(y1 - y0) * 100}%` });
+    zone.hidden = false;
+  }
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   const ACK_WAIT_MS = 2000; // ack가 이만큼 안 오면 다음 프레임을 보낸다 (멈춤 방지)
@@ -108,7 +134,11 @@
     ws.onmessage = (event) => {
       let msg;
       try { msg = JSON.parse(event.data); } catch (_) { return; }
-      if (msg.type === "config") { config = { ...config, ...msg }; }
+      if (msg.type === "config") {
+        config = { ...config, ...msg };
+        view.style.setProperty("--frame-aspect", `${config.width} / ${config.height}`);
+        showZone(config.draw_zone);
+      }
       else if (msg.type === "ack") {
         if (waiting && msg.frame_id === waiting.id) {
           acks.push({ t: performance.now(), rtt: performance.now() - waiting.at, dropped: !!msg.dropped });
@@ -137,13 +167,15 @@
   function send() {
     if (!stream || !ws || ws.readyState !== WebSocket.OPEN || !video.videoWidth) { schedule(100); return; }
     if (waiting && performance.now() - waiting.at < ACK_WAIT_MS) return; // ack를 기다리는 중
-    // 가로로 찍으면 width×height, 세로로 찍으면 height×width 안에 맞춘다 (비율 유지)
-    const landscape = video.videoWidth >= video.videoHeight;
-    const boxW = landscape ? config.width : config.height, boxH = landscape ? config.height : config.width;
-    const scale = Math.min(boxW / video.videoWidth, boxH / video.videoHeight, 1);
-    const w = Math.round(video.videoWidth * scale), h = Math.round(video.videoHeight * scale);
-    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-    ctx.drawImage(video, 0, 0, w, h);
+    // 항상 width×height(기본 320×240, 가로 4:3)로 보낸다. 카메라 비율이 다르면 가운데를 잘라 낸다.
+    // 세로 프레임을 섞어 보내면 같은 손 움직임도 그림판에서 가로로 늘어나기 때문이다 (docs/contracts ①)
+    const vw = video.videoWidth, vh = video.videoHeight, target = config.width / config.height;
+    let sw = vw, sh = vh;
+    if (vw / vh > target) sw = vh * target; else sh = vw / target;
+    const sx = (vw - sw) / 2, sy = (vh - sh) / 2;
+    tip.hidden = vh <= vw;
+    if (canvas.width !== config.width || canvas.height !== config.height) { canvas.width = config.width; canvas.height = config.height; }
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, config.width, config.height);
     const jpeg = canvas.toDataURL("image/jpeg", config.quality).split(",", 2)[1];
     const id = frameId++;
     waiting = { id, at: performance.now() };

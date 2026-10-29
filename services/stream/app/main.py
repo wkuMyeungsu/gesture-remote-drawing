@@ -155,7 +155,9 @@ async def stream_socket(ws: WebSocket):
         except Exception:
             pass
     await ws.send_json({"type": "config", "width": settings.width, "height": settings.height,
-                        "quality": settings.jpeg_quality, "max_fps": settings.max_fps})
+                        "quality": settings.jpeg_quality, "max_fps": settings.max_fps,
+                        # 그림판 영역 [x0, y0, x1, y1] (0~1, 보내는 프레임 기준). 카메라 페이지가 미리보기에 표시한다
+                        "draw_zone": [settings.zone_lo, settings.zone_lo, settings.zone_hi, settings.zone_hi]})
     if previous is None:
         asyncio.create_task(relay.notify(sid, "connected"))
 
